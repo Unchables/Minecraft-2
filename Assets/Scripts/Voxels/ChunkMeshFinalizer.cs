@@ -1,11 +1,11 @@
+using System.Collections.Generic;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.NotBurstCompatible;
 using Unity.Entities;
-using Unity.Entities.Graphics;
 using Unity.Mathematics;
-using Unity.Rendering; // Required for RenderMesh, RenderBounds etc.
-using Unity.Transforms; // Required for LocalToWorld
+using Unity.Rendering;
+using Unity.Transforms; // Required for RenderMesh, RenderBounds etc.
 using UnityEngine; // Required for creating Mesh objects
 using UnityEngine.Rendering; // Required for SubMeshDescriptor
 
@@ -23,70 +23,89 @@ namespace Voxels
 
         public void OnUpdate(ref SystemState state)
         {
-            // Create a command buffer to make structural changes (add/remove components)
             var ecb = new EntityCommandBuffer(state.WorldUpdateAllocator);
             var material = MaterialHolder.ChunkMaterial;
-
-            // Query for all chunks that have generated mesh data but have not yet been finalized
-            // and had their rendering components added.
-            foreach (var (chunkRenderData, meshJobHandle, chunkHasMesh, chunkIsGeneratingMesh, entity) in SystemAPI
-                         .Query<RefRO<ChunkMeshRenderData>, RefRW<MeshJobHandle>, EnabledRefRW<ChunkHasMesh>, EnabledRefRO<IsChunkMeshGenerating>>()
+            
+            List<AddRenderMeshCommand> addRenderComponentsCommands = new List<AddRenderMeshCommand>();
+            
+            foreach (var (chunkPos, chunkRenderData, meshJobHandle, chunkHasMesh, chunkIsGeneratingMesh, entity) in SystemAPI
+                         .Query<RefRO<ChunkPosition>, RefRO<ChunkMeshRenderData>, RefRW<MeshJobHandle>, EnabledRefRW<ChunkHasMesh>, EnabledRefRO<IsChunkMeshGenerating>>()
                          .WithDisabled<ChunkHasMesh>()
                          .WithEntityAccess())
             {
-                // First, check if the meshing job for this specific chunk is complete.
-                // If not, we skip it and will check again next frame.
                 if (!meshJobHandle.ValueRO.Value.IsCompleted)
-                {
                     continue;
-                }
                 
                 meshJobHandle.ValueRW.Value.Complete();
                 
                 var vertices = chunkRenderData.ValueRO.Vertices;
                 var triangles = chunkRenderData.ValueRO.Triangles;
 
-                // Create a new UnityEngine.Mesh object
                 var mesh = new Mesh
                 {
-                    // Use MeshUpdateFlags to prevent recalculating anything until all data is set
                     name = "VoxelChunkMesh"
                 };
                 
-                // Use SetVertices and SetTriangles with NativeLists to be highly efficient.
-                // This avoids creating intermediate C# arrays.
                 mesh.SetVertices(vertices.AsArray());
-                mesh.SetTriangles(triangles.ToArrayNBC(), 0, false); // Submesh 0, don't calculate bounds yet
+                mesh.SetTriangles(triangles.ToArrayNBC(), 0, false);
 
-                // Recalculate normals and bounds now that the data is set
                 mesh.RecalculateNormals();
-                mesh.RecalculateBounds(); // This is crucial for the RenderBounds component
+                mesh.RecalculateBounds();
                 
                 var desc = new RenderMeshDescription(
                     shadowCastingMode: ShadowCastingMode.Off);
 
                 var renderMeshArray = new RenderMeshArray(new [] { material }, new [] { mesh });
         
-                RenderMeshUtility.AddComponents(
-                    entity,
-                    state.EntityManager,
-                    desc,
-                    renderMeshArray,
-                    MaterialMeshInfo.FromRenderMeshArrayIndices(0, 0));
-                
-                // --- CRITICAL CLEANUP ---
-                // Dispose the native lists to prevent memory leaks.
-                vertices.Dispose();
-                triangles.Dispose();
+                addRenderComponentsCommands.Add(new AddRenderMeshCommand
+                {
+                    Desc = desc,
+                    Entity = entity,
+                    RenderMeshArray = renderMeshArray,
+                    MatMeshInfo = MaterialMeshInfo.FromRenderMeshArrayIndices(0, 0),
+                    
+                    Vertices = vertices,
+                    Triangles = triangles,
+                });
 
+                ecb.AddComponent(entity, new LocalTransform
+                {
+                    Position = chunkPos.ValueRO.Value * 32,
+                    Rotation = quaternion.identity,
+                    Scale = 1
+                });
+                
                 chunkHasMesh.ValueRW = true;
             }
+
+            foreach (var command in addRenderComponentsCommands)
+            {
+                RenderMeshUtility.AddComponents(
+                        command.Entity,
+                        state.EntityManager,
+                        command.Desc,
+                        command.RenderMeshArray,
+                        command.MatMeshInfo);
+
+                command.Vertices.Dispose();
+                command.Triangles.Dispose();
+            }
             
-            // Play back the commands from the ECB to apply the component changes.
             ecb.Playback(state.EntityManager);
         }
 
         [BurstCompile]
         public void OnDestroy(ref SystemState state) { }
+    }
+
+    public class AddRenderMeshCommand
+    {
+        public Entity Entity;
+        public RenderMeshDescription Desc;
+        public RenderMeshArray RenderMeshArray;
+        public MaterialMeshInfo MatMeshInfo;
+        
+        public NativeList<float3> Vertices;
+        public NativeList<int> Triangles;
     }
 }

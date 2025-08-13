@@ -9,25 +9,10 @@ namespace Voxels
     {
         public NativeArray<Voxel> Voxels;
     }
-    public struct NeighbouringChunks : IComponentData
+    public struct NeighbouringChunks : IBufferElementData
     {
-        // Neighbor on the positive X axis
-        public Entity Right;
-
-        // Neighbor on the negative X axis
-        public Entity Left;
-
-        // Neighbor on the positive Y axis
-        public Entity Top;
-
-        // Neighbor on the negative Y axis
-        public Entity Bottom;
-    
-        // Neighbor on the positive Z axis
-        public Entity Front;
-
-        // Neighbor on the negative Z axis
-        public Entity Back;
+        public Entity Neighbour;
+        public int3 Position;
     }
     public struct TerrainJobHandle : IComponentData
     {

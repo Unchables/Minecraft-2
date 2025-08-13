@@ -12,7 +12,6 @@ namespace Voxels
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<WorldSettings>();
-            Noise.SetSeed(123);
         }
 
         [BurstCompile]
@@ -50,11 +49,6 @@ namespace Voxels
                 
                 chunkHasVoxelData.ValueRW = true;
             }
-        }
-
-        public void OnDestroy(ref SystemState state)
-        {
-            Noise.Dispose();
         }
     }
 }

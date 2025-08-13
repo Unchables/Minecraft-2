@@ -30,10 +30,10 @@ namespace Voxels
                     TerrainHeight = authoring.terrainHeight
                 });
                 
-                AddComponent(worldEntity, new AllChunks
+                /*AddComponent(worldEntity, new AllChunks
                 {
                     Chunks = new NativeHashMap<int3, Entity>(1000, Allocator.Persistent)
-                });
+                });*/
             }
         }
     }

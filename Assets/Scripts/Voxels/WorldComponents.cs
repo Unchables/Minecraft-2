@@ -16,6 +16,7 @@ namespace Voxels
         public Entity ChunkPrefab; // A template entity for creating new chunks
     }
 
+    [ChunkSerializable]
     public struct AllChunks : IComponentData
     {
         public NativeHashMap<int3, Entity> Chunks;

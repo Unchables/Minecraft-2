@@ -16,6 +16,7 @@ namespace Voxels
         //[NoAlias][WriteOnly][NativeDisableParallelForRestriction]
         public NativeArray<Voxel> Voxels;
         
+        [BurstCompile]
         public void Execute(int index)
         {
             // Calculate local-to-chunk 3D coordinates from the 1D index
@@ -29,12 +30,14 @@ namespace Voxels
             int worldZ = ChunkPosition.z * 32 + z;
                 
             float noiseFrequency = 0.01f;
-            float value = Noise.GetSimplexNoise(worldX, worldY, worldZ, noiseFrequency);
+            int seed = 123;
+            float3 position = new float3(worldX, worldY, worldZ) * noiseFrequency;
+            float value = Noise.GradientNoise3D(position.x, position.y, position.z, seed);
                 
             //float density = value - (worldY / 64.0f);
                 
             BlockType blockToPlace;
-            if (value > 150)
+            if (value < 0)
             {
                 blockToPlace = BlockType.Stone;
             }

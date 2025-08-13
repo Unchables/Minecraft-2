@@ -12,7 +12,7 @@ public partial struct TestingSystem : ISystem
 {
     public void OnCreate(ref SystemState state)
     {
-        return;
+        //return;
         var entity = state.EntityManager.CreateEntity();
 
         state.EntityManager.SetName(entity, "hello");

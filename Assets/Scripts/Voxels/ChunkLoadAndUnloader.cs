@@ -15,7 +15,7 @@ namespace Voxels
     {
         public void OnCreate(ref SystemState state)
         {
-            state.RequireForUpdate<AllChunks>();
+            //state.RequireForUpdate<AllChunks>();
             state.RequireForUpdate<WorldSettings>();
             state.RequireForUpdate<PlayerTag>();
             state.RequireForUpdate<LastPlayerChunkCoord>();
@@ -24,22 +24,21 @@ namespace Voxels
         public void OnUpdate(ref SystemState state)
         {
             var worldSettings = SystemAPI.GetSingleton<WorldSettings>();
-            var allChunks = SystemAPI.GetSingleton<AllChunks>();
+            //var allChunks = SystemAPI.GetSingleton<AllChunks>();
             var playerEntity = SystemAPI.GetSingletonEntity<PlayerTag>();
             
             ref var lastPlayerChunkCoord = ref SystemAPI.GetComponentRW<LastPlayerChunkCoord>(playerEntity).ValueRW;
             int3 currentPlayerChunkPos = (int3)math.round(SystemAPI.GetComponent<LocalTransform>(playerEntity).Position / worldSettings.ChunkSize);
             
-            if (currentPlayerChunkPos.Equals(lastPlayerChunkCoord.ChunkCoord))
-                return;
+            /*if (currentPlayerChunkPos.Equals(lastPlayerChunkCoord.ChunkCoord))
+                return;*/
             
             lastPlayerChunkCoord.ChunkCoord = currentPlayerChunkPos;
             
             EntityCommandBuffer ecb = new EntityCommandBuffer(Allocator.TempJob);
             
             // --- STEP 1: Build a HashSet of all chunks that are required ---
-            // A HashSet provides O(1) "Contains" checks, fixing the major performance bug.
-            var requiredChunks = new NativeHashSet<int3>(1000, Allocator.Temp);
+            var requiredChunks = new NativeList<int3>(Allocator.Temp);
             for (int x = -worldSettings.ChunkLoadRadius; x <= worldSettings.ChunkLoadRadius; x++)
             {
                 for (int y = -worldSettings.ChunkLoadRadius; y <= worldSettings.ChunkLoadRadius; y++)
@@ -92,26 +91,30 @@ namespace Voxels
                 ecb.AddComponent<ChunkHasMesh>(newChunkEntity);
                 ecb.SetComponentEnabled<ChunkHasMesh>(newChunkEntity, false);
                     
+                //ecb.AddBuffer<NeighbouringChunks>(newChunkEntity);
+                
                 ecb.AddComponent<TerrainJobHandle>(newChunkEntity);
                 ecb.AddComponent<MeshJobHandle>(newChunkEntity);
                 ecb.AddComponent<ChunkMeshRenderData>(newChunkEntity);
                 ecb.AddComponent(newChunkEntity, new VoxelStateMap { Map = new NativeHashMap<int, Entity>(0, Allocator.Persistent)});
 
-                NativeList<int3> neighbourPositions = new NativeList<int3>(6, Allocator.Temp);
-                neighbourPositions.Add(worldPosition + new int3(1, 0, 0));
-                neighbourPositions.Add(worldPosition + new int3(-1, 0, 0));
-                neighbourPositions.Add(worldPosition + new int3(0, 1, 0));
-                neighbourPositions.Add(worldPosition + new int3(0, -1, 0));
-                neighbourPositions.Add(worldPosition + new int3(0, 0, 1));
-                neighbourPositions.Add(worldPosition + new int3(0, 0, -1));
+                /*NativeList<int3> neighbourPositions = new NativeList<int3>(6, Allocator.Temp);
+                neighbourPositions.Add(requiredPos + new int3(1, 0, 0));
+                neighbourPositions.Add(requiredPos + new int3(-1, 0, 0));
+                neighbourPositions.Add(requiredPos + new int3(0, 1, 0));
+                neighbourPositions.Add(requiredPos + new int3(0, -1, 0));
+                neighbourPositions.Add(requiredPos + new int3(0, 0, 1));
+                neighbourPositions.Add(requiredPos + new int3(0, 0, -1));
 
                 foreach (var pos in neighbourPositions)
                 {
-                    var neighbour = allChunks.Chunks[pos];
-                    //ecb.AddBuffer<>()
-                    //ecb.SetComponent(neighbour, );
+                    if (allChunks.Chunks.TryGetValue(pos, out var neighbour))
+                    {
+                        ecb.AppendToBuffer(neighbour, new NeighbouringChunks { Neighbour = newChunkEntity, Position = -pos});
+                    }
                 }
-                //allChunks.Chunks.Add(newChunkEntity);
+                
+                allChunks.Chunks.Add(requiredPos, newChunkEntity);*/
             }
             
             ecb.Playback(state.EntityManager);

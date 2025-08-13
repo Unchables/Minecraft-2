@@ -1,7 +1,5 @@
-﻿using System.Threading;
-using Unity.Burst;
+﻿using Unity.Burst;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe; // Required for GetUnsafePtr
 using Unity.Jobs;
 using Unity.Mathematics;
 
@@ -14,12 +12,12 @@ namespace Voxels
         
         [ReadOnly] public NativeArray<Voxel> Voxels;
         
-        [ReadOnly] public NativeArray<Voxel> LeftVoxels;
+        /*[ReadOnly] public NativeArray<Voxel> LeftVoxels;
         [ReadOnly] public NativeArray<Voxel> RightVoxels;
         [ReadOnly] public NativeArray<Voxel> ForwardVoxels;
         [ReadOnly] public NativeArray<Voxel> BackVoxels;
         [ReadOnly] public NativeArray<Voxel> UpVoxels;
-        [ReadOnly] public NativeArray<Voxel> DownVoxels;
+        [ReadOnly] public NativeArray<Voxel> DownVoxels;*/
         
         public NativeList<float3> Vertices;
         public NativeList<int> Triangles;
@@ -27,6 +25,7 @@ namespace Voxels
         [NativeDisableParallelForRestriction]
         public NativeArray<int> VertexIndexCounter;
         
+        [BurstCompile]
         public void Execute()
         {
             for (int x = 0; x < ChunkSize; x++)
@@ -59,6 +58,7 @@ namespace Voxels
                 }
             }
         }
+        [BurstCompile]
         private bool IsFaceVisible(int x, int y, int z)
         {
             // Check if the neighboring voxel in the given direction is inactive or out of bounds
@@ -66,6 +66,7 @@ namespace Voxels
                 return true; // Face is at the boundary of the chunk
             return (BlockType)Voxels[GetIndexFromCoords(x, y, z)].GetBlockID() == BlockType.Air;
         }
+        [BurstCompile]
         private void AddFaceData(int x, int y, int z, int faceIndex)
         {
             // Based on faceIndex, determine vertices and triangles
@@ -122,6 +123,7 @@ namespace Voxels
             }
             AddTriangleIndices();
         }
+        [BurstCompile]
         private void AddTriangleIndices()
         {
             int vertCount = Vertices.Length;
@@ -137,6 +139,7 @@ namespace Voxels
             Triangles.Add(vertCount - 1);
         }
 
+        [BurstCompile]
         private int GetIndexFromCoords(int x, int y, int z)
         {
             return x + ChunkSize * (y + ChunkSize * z);
