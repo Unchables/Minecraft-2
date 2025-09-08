@@ -1,10 +1,8 @@
-﻿using System.Collections.Generic;
-using Player;
+﻿using Player;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Rendering;
 using Unity.Transforms;
 using UnityEngine;
 
@@ -15,7 +13,8 @@ namespace Voxels
     {
         public void OnCreate(ref SystemState state)
         {
-            //state.RequireForUpdate<AllChunks>();
+            state.RequireForUpdate<ChunksToAdd>();
+            state.RequireForUpdate<AllChunks>();
             state.RequireForUpdate<WorldSettings>();
             state.RequireForUpdate<PlayerTag>();
             state.RequireForUpdate<LastPlayerChunkCoord>();
@@ -23,8 +22,9 @@ namespace Voxels
 
         public void OnUpdate(ref SystemState state)
         {
+            var worldEntity = SystemAPI.GetSingletonEntity<WorldSettings>();
             var worldSettings = SystemAPI.GetSingleton<WorldSettings>();
-            //var allChunks = SystemAPI.GetSingleton<AllChunks>();
+            var allChunks = SystemAPI.GetSingleton<AllChunks>();
             var playerEntity = SystemAPI.GetSingletonEntity<PlayerTag>();
             
             ref var lastPlayerChunkCoord = ref SystemAPI.GetComponentRW<LastPlayerChunkCoord>(playerEntity).ValueRW;
@@ -63,6 +63,7 @@ namespace Voxels
                 else
                 {
                     ecb.DestroyEntity(entity);
+                    allChunks.Chunks.Remove(chunkPosition.ValueRO.Value);
                 }
             }
 
@@ -78,7 +79,7 @@ namespace Voxels
                 ecb.AddComponent(newChunkEntity, new ChunkPosition { Value = requiredPos });
                 ecb.AddComponent(newChunkEntity, new LocalTransform { Position = worldPosition, Rotation = quaternion.identity, Scale = 1 });
                 ecb.AddComponent(newChunkEntity, new ChunkVoxels{ Voxels = new NativeArray<Voxel>(32 * 32 * 32, Allocator.Persistent) });
-                    
+                
                 ecb.AddComponent<IsChunkTerrainGenerating>(newChunkEntity);
                 ecb.SetComponentEnabled<IsChunkTerrainGenerating>(newChunkEntity, false);
 
@@ -90,31 +91,23 @@ namespace Voxels
 
                 ecb.AddComponent<ChunkHasMesh>(newChunkEntity);
                 ecb.SetComponentEnabled<ChunkHasMesh>(newChunkEntity, false);
-                    
-                //ecb.AddBuffer<NeighbouringChunks>(newChunkEntity);
+
+                ecb.AddComponent<ChunkAddedToAllChunks>(newChunkEntity);
+                ecb.SetComponentEnabled<ChunkAddedToAllChunks>(newChunkEntity, false);
                 
                 ecb.AddComponent<TerrainJobHandle>(newChunkEntity);
                 ecb.AddComponent<MeshJobHandle>(newChunkEntity);
                 ecb.AddComponent<ChunkMeshRenderData>(newChunkEntity);
                 ecb.AddComponent(newChunkEntity, new VoxelStateMap { Map = new NativeHashMap<int, Entity>(0, Allocator.Persistent)});
+            }
 
-                /*NativeList<int3> neighbourPositions = new NativeList<int3>(6, Allocator.Temp);
-                neighbourPositions.Add(requiredPos + new int3(1, 0, 0));
-                neighbourPositions.Add(requiredPos + new int3(-1, 0, 0));
-                neighbourPositions.Add(requiredPos + new int3(0, 1, 0));
-                neighbourPositions.Add(requiredPos + new int3(0, -1, 0));
-                neighbourPositions.Add(requiredPos + new int3(0, 0, 1));
-                neighbourPositions.Add(requiredPos + new int3(0, 0, -1));
-
-                foreach (var pos in neighbourPositions)
+            foreach (var (position, voxels, isAdded) in SystemAPI.Query<RefRO<ChunkPosition>, RefRO<ChunkVoxels>, EnabledRefRW<ChunkAddedToAllChunks>>().WithDisabled<ChunkAddedToAllChunks>())
+            {
+                if (!isAdded.ValueRO)
                 {
-                    if (allChunks.Chunks.TryGetValue(pos, out var neighbour))
-                    {
-                        ecb.AppendToBuffer(neighbour, new NeighbouringChunks { Neighbour = newChunkEntity, Position = -pos});
-                    }
+                    allChunks.Chunks.Add(position.ValueRO.Value, voxels.ValueRO);
+                    isAdded.ValueRW = true;
                 }
-                
-                allChunks.Chunks.Add(requiredPos, newChunkEntity);*/
             }
             
             ecb.Playback(state.EntityManager);
@@ -132,5 +125,10 @@ namespace Voxels
             }
         }
     }
-    
+
+    public struct ChunkCreatedThisFrame
+    {
+        public Entity ChunkEntity;
+        public int3 Position;
+    }
 }

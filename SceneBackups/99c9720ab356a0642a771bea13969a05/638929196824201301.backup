@@ -163,7 +163,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1527966a49e84287a53557071f082324, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  chunkMaterial: {fileID: 0}
+  chunkMaterial: {fileID: 2100000, guid: 29ee64bbaf8ba464694dfe766888618d, type: 2}
 --- !u!1 &330585543
 GameObject:
   m_ObjectHideFlags: 0
@@ -361,7 +361,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 95d80dbab6464085b810c26097e4efc9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Voxels.AtlasGenerator
-  blockDatabase: {fileID: 11400000, guid: 1a92915128c1c1f4e932f2ef9ca1e7f2, type: 2}
+  blockDatabase: {fileID: 0}
   chunkMaterialTemplate: {fileID: 2100000, guid: 29ee64bbaf8ba464694dfe766888618d, type: 2}
 --- !u!1 &410087039
 GameObject:

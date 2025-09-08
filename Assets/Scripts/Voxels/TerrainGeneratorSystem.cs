@@ -34,7 +34,7 @@ namespace Voxels
 
                 var terrainJobHandle = terrainJob.Schedule(Chunk.ChunkSize*Chunk.ChunkSize*Chunk.ChunkSize, 2048);
                 terrainJobHandleData.ValueRW.Value = terrainJobHandle;
-                state.Dependency = terrainJobHandle;
+                //state.Dependency = terrainJobHandle;
 
                 isTerrainGenerating.ValueRW = true;
             }

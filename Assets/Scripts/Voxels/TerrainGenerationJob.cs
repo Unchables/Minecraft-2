@@ -32,18 +32,26 @@ namespace Voxels
             float noiseFrequency = 0.01f;
             int seed = 123;
             float3 position = new float3(worldX, worldY, worldZ) * noiseFrequency;
-            float value = Noise.GradientNoise3D(position.x, position.y, position.z, seed);
+            float value = Noise.GradientNoise3D(position.x, position.y, position.z, seed) + 0.5f;
                 
             //float density = value - (worldY / 64.0f);
                 
             BlockType blockToPlace;
-            if (value < 0)
+            if (value < 0.25)
+            {
+                blockToPlace = BlockType.Air;
+            }
+            else if (value < 0.5)
             {
                 blockToPlace = BlockType.Stone;
             }
+            else if (value < 0.75)
+            {
+                blockToPlace = BlockType.Sand;
+            }
             else
             {
-                blockToPlace = BlockType.Air;
+                blockToPlace = BlockType.Grass;
             }
                 
             var voxel = new Voxel();

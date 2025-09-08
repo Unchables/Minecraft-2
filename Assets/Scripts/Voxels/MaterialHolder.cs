@@ -8,9 +8,9 @@ namespace Voxels
         public static Material ChunkMaterial;
         public Material chunkMaterial;
 
-        private void Start()
+        /*private void Start()
         {
             ChunkMaterial = chunkMaterial;
-        }
+        }*/
     }
 }

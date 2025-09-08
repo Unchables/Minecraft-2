@@ -40,6 +40,7 @@ namespace Voxels
                 
                 var vertices = chunkRenderData.ValueRO.Vertices;
                 var triangles = chunkRenderData.ValueRO.Triangles;
+                var uvs = chunkRenderData.ValueRO.UVs;
 
                 var mesh = new Mesh
                 {
@@ -48,6 +49,7 @@ namespace Voxels
                 
                 mesh.SetVertices(vertices.AsArray());
                 mesh.SetTriangles(triangles.ToArrayNBC(), 0, false);
+                mesh.SetUVs(0, uvs.AsArray());
 
                 mesh.RecalculateNormals();
                 mesh.RecalculateBounds();

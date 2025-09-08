@@ -9,11 +9,6 @@ namespace Voxels
     {
         public NativeArray<Voxel> Voxels;
     }
-    public struct NeighbouringChunks : IBufferElementData
-    {
-        public Entity Neighbour;
-        public int3 Position;
-    }
     public struct TerrainJobHandle : IComponentData
     {
         public JobHandle Value;
@@ -29,10 +24,12 @@ namespace Voxels
     {
         public NativeList<float3> Vertices;
         public NativeList<int> Triangles;
+        public NativeList<float2> UVs;
     }
     
     public struct ChunkHasVoxelData : IComponentData, IEnableableComponent  { }
     public struct IsChunkTerrainGenerating : IComponentData, IEnableableComponent  { }
     public struct IsChunkMeshGenerating : IComponentData, IEnableableComponent  { }
     public struct ChunkHasMesh : IComponentData, IEnableableComponent  { }
+    public struct ChunkAddedToAllChunks : IComponentData, IEnableableComponent  { }
 }

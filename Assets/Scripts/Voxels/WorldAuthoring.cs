@@ -29,11 +29,13 @@ namespace Voxels
                     ChunkUnloadRadius = authoring.chunkUnloadRadius,
                     TerrainHeight = authoring.terrainHeight
                 });
+
+                AddBuffer<ChunksToAdd>(worldEntity);
                 
-                /*AddComponent(worldEntity, new AllChunks
+                AddComponent(worldEntity, new AllChunks
                 {
-                    Chunks = new NativeHashMap<int3, Entity>(1000, Allocator.Persistent)
-                });*/
+                    Chunks = new NativeHashMap<int3, ChunkVoxels>(1000, Allocator.Persistent)
+                });
             }
         }
     }

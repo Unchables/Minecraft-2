@@ -19,6 +19,13 @@ namespace Voxels
     [ChunkSerializable]
     public struct AllChunks : IComponentData
     {
-        public NativeHashMap<int3, Entity> Chunks;
+        public NativeHashMap<int3, ChunkVoxels> Chunks;
+    }
+    
+    [ChunkSerializable]
+    public struct ChunksToAdd : IBufferElementData
+    {
+        public int3 Position;
+        public ChunkVoxels ChunkVoxels;
     }
 }
