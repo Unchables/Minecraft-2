@@ -28,4 +28,9 @@ namespace Voxels
         public int3 Position;
         public ChunkVoxels ChunkVoxels;
     }
+    
+    public struct TerrainGenerationData : IComponentData
+    {
+        public TerrainConfig TerrainConfig;
+    }
 }

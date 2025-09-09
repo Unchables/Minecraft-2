@@ -46,7 +46,7 @@ namespace Voxels
                         
                         ushort blockID = Voxels[index].GetBlockID();
                         
-                        if ((BlockType)blockID == BlockType.Air) continue;
+                        if (blockID == AirID.Value) continue;
                         
                         if(IsFaceVisible(x, y + 1, z)) AddFaceData(new int3(x, y, z), 0, blockID);
                         if(IsFaceVisible(x, y - 1, z)) AddFaceData(new int3(x, y, z), 1, blockID);
@@ -68,36 +68,36 @@ namespace Voxels
             if (x < 0)
             {
                 if (LeftVoxels.Length == 0) return true;
-                return LeftVoxels[GetIndexFromCoords(ChunkSize - 1, y, z)].GetBlockID() == (ushort)BlockType.Air;
+                return LeftVoxels[GetIndexFromCoords(ChunkSize - 1, y, z)].GetBlockID() == AirID.Value;
             }
             if (x >= ChunkSize)
             {
                 if (RightVoxels.Length == 0) return true;
-                return RightVoxels[GetIndexFromCoords(0, y, z)].GetBlockID() == (ushort)BlockType.Air;
+                return RightVoxels[GetIndexFromCoords(0, y, z)].GetBlockID() == AirID.Value;
             }
             if (y < 0)
             {
                 if (DownVoxels.Length == 0) return true;
-                return DownVoxels[GetIndexFromCoords(x, ChunkSize - 1, z)].GetBlockID() == (ushort)BlockType.Air;
+                return DownVoxels[GetIndexFromCoords(x, ChunkSize - 1, z)].GetBlockID() == AirID.Value;
             }
             if (y >= ChunkSize)
             {
                 if (UpVoxels.Length == 0) return true;
-                return UpVoxels[GetIndexFromCoords(x, 0, z)].GetBlockID() == (ushort)BlockType.Air;
+                return UpVoxels[GetIndexFromCoords(x, 0, z)].GetBlockID() == AirID.Value;
             }
             if (z < 0)
             {
                 if (BackVoxels.Length == 0) return true;
-                return BackVoxels[GetIndexFromCoords(x, y, ChunkSize - 1)].GetBlockID() == (ushort)BlockType.Air;
+                return BackVoxels[GetIndexFromCoords(x, y, ChunkSize - 1)].GetBlockID() == AirID.Value;
             }
             if (z >= ChunkSize)
             {
                 if (ForwardVoxels.Length == 0) return true;
-                return ForwardVoxels[GetIndexFromCoords(x, y, 0)].GetBlockID() == (ushort)BlockType.Air;
+                return ForwardVoxels[GetIndexFromCoords(x, y, 0)].GetBlockID() == AirID.Value;
             }
             
             // Neighbor is inside the current chunk
-            return Voxels[GetIndexFromCoords(x, y, z)].GetBlockID() == (ushort)BlockType.Air;
+            return Voxels[GetIndexFromCoords(x, y, z)].GetBlockID() == AirID.Value;
         }
 
         /// <summary>

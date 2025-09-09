@@ -22,11 +22,4 @@ namespace Voxels
         public NativeArray<BlockTextureData> BlockTypeData;
         public int AtlasSizeInTiles;
     }
-    
-    // This is a class, not a struct, and will be a "managed component".
-    // It will hold our Material reference.
-    public class VoxelRenderMaterial : IComponentData
-    {
-        public UnityEngine.Material ChunkMaterial;
-    }
 }

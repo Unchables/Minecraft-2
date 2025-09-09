@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 344d8365b6f6446d80e5396ef688ca0c, type: 3}
+  m_Name: BlockNoise
+  m_EditorClassIdentifier: Assembly-CSharp::Voxels.BlockNoiseSO
+  BlockNoises:
+  - BlockTypeSO: {fileID: 11400000, guid: a2ae50d9b34f9864995c894ee39c166d, type: 2}
+    MinThreshold: 1.27
+  - BlockTypeSO: {fileID: 11400000, guid: 1294a317da867cc40bafc17c9a424c51, type: 2}
+    MinThreshold: 2.37
+  - BlockTypeSO: {fileID: 11400000, guid: af939e2e5ecd888488ad0e637fdbb735, type: 2}
+    MinThreshold: 1.91
+  - BlockTypeSO: {fileID: 11400000, guid: 334b065b9e843a24ead5a907b48b75e4, type: 2}
+    MinThreshold: 1.1
+  - BlockTypeSO: {fileID: 11400000, guid: dddfb61e6baa0e044bc858d561daf2ee, type: 2}
+    MinThreshold: 0

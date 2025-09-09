@@ -5,19 +5,20 @@ using Unity.Jobs;
 
 namespace Voxels
 {
+    [UpdateInGroup(typeof(SimulationSystemGroup))] // Run in the presentation group, after simulation
     [UpdateAfter(typeof(ChunkLoadAndUnloader))] // Ensure Manager runs first
     public partial struct TerrainGeneratorSystem : ISystem
     {
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            state.RequireForUpdate<WorldSettings>();
+            state.RequireForUpdate<TerrainGenerationData>();
         }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var worldSettings = SystemAPI.GetSingleton<WorldSettings>();
+            var terrainGenData = SystemAPI.GetSingleton<TerrainGenerationData>();
             
             foreach (var (chunkVoxels, chunkPosition, isTerrainGenerating, terrainJobHandleData)
                      in SystemAPI.Query<RefRO<ChunkVoxels>, RefRO<ChunkPosition>, EnabledRefRW<IsChunkTerrainGenerating>, RefRW<TerrainJobHandle>>()
@@ -26,15 +27,15 @@ namespace Voxels
             {
                 var terrainJob = new TerrainGenerationJob
                 {
-                    ChunkSize = worldSettings.ChunkSize,
                     ChunkPosition = chunkPosition.ValueRO.Value,
-                    TerrainHeight = worldSettings.TerrainHeight,
-                    Voxels = chunkVoxels.ValueRO.Voxels
+                    Voxels = chunkVoxels.ValueRO.Voxels,
+                    
+                    TerrainConfig = terrainGenData.TerrainConfig
                 };
 
-                var terrainJobHandle = terrainJob.Schedule(Chunk.ChunkSize*Chunk.ChunkSize*Chunk.ChunkSize, 2048);
+                var terrainJobHandle = terrainJob.Schedule(Chunk.ChunkSize*Chunk.ChunkSize*Chunk.ChunkSize, 2048, state.Dependency);
                 terrainJobHandleData.ValueRW.Value = terrainJobHandle;
-                //state.Dependency = terrainJobHandle;
+                state.Dependency = terrainJobHandle;
 
                 isTerrainGenerating.ValueRW = true;
             }

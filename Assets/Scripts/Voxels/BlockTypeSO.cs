@@ -1,4 +1,5 @@
-﻿using UnityEngine;
+﻿using Sirenix.OdinInspector;
+using UnityEngine;
 
 namespace Voxels
 {
@@ -18,5 +19,12 @@ namespace Voxels
     
         // Texture for the bottom face (-Y)
         public Texture2D BottomFaceTexture;
+
+        [ReadOnly] public ushort BlockID;
+    }
+
+    public class AirID
+    {
+        public const ushort Value = 0;
     }
 }

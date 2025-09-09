@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Voxels
 {
-    public class AtlasGenerator : MonoBehaviour
+    public class AtlasBaker : MonoBehaviour
     {
         [Header("References")]
         [SerializeField] private BlockDatabaseSO blockDatabase;
@@ -22,7 +22,7 @@ namespace Voxels
             var uniqueTextures = new List<Texture2D>();
             var textureToIndexMap = new Dictionary<Texture2D, int>();
 
-            foreach (var blockSO in blockDatabase.BlockTypes)
+            foreach (var blockSO in blockDatabase.blockTypes)
             {
                 // Add each unique texture to our list
                 AddUniqueTexture(blockSO.TopFaceTexture, uniqueTextures, textureToIndexMap);
@@ -62,15 +62,14 @@ namespace Voxels
 
             // === 5. Create BlockTextureData for DOTS ===
             // +1 to account for Air at ID 0
-            int blockTypeCount = blockDatabase.BlockTypes.Count + 1; 
+            int blockTypeCount = blockDatabase.blockTypes.Count + 1; 
             var blockTextureDataArray = new NativeArray<BlockTextureData>(blockTypeCount, Allocator.Persistent);
         
-            for (int i = 0; i < blockDatabase.BlockTypes.Count; i++)
+            for (int i = 0; i < blockDatabase.blockTypes.Count; i++)
             {
-                var blockSO = blockDatabase.BlockTypes[i];
-                ushort blockID = (ushort)(i + 1); // ID 0 is Air
+                var blockSO = blockDatabase.blockTypes[i];
 
-                blockTextureDataArray[blockID] = new BlockTextureData
+                blockTextureDataArray[blockSO.BlockID] = new BlockTextureData
                 {
                     Top = GetFaceTexture(blockSO.TopFaceTexture, textureToIndexMap, atlasSizeInTiles),
                     Side = GetFaceTexture(blockSO.SideFaceTexture, textureToIndexMap, atlasSizeInTiles),
@@ -91,10 +90,6 @@ namespace Voxels
             });
 
             MaterialHolder.ChunkMaterial = finalChunkMaterial;
-            /*entityManager.AddComponentObject(singletonEntity, new VoxelRenderMaterial
-            {
-                ChunkMaterial = finalChunkMaterial
-            });*/
             
             Debug.Log($"Generated {atlasPixelSize}x{atlasPixelSize} Texture Atlas with {uniqueTextures.Count} unique textures.");
         }

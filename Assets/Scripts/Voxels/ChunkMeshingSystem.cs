@@ -7,12 +7,15 @@ using Unity.Mathematics;
 namespace Voxels
 {
     [BurstCompile]
+    [UpdateInGroup(typeof(SimulationSystemGroup))] // Run in the presentation group, after simulation
+    [UpdateAfter(typeof(TerrainGeneratorSystem))]
     public partial struct ChunkMeshingSystem : ISystem
     {
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<AllChunks>();
+            state.RequireForUpdate<WorldSettings>();
             state.RequireForUpdate<VoxelRenderResources>(); // Needs the atlas data
         }
 
