@@ -13,6 +13,7 @@ namespace Voxels
 
         void Awake()
         {
+            blockDatabase.SetBlockIDs();
             GenerateAtlasAndPrepareDOTSData();
         }
 

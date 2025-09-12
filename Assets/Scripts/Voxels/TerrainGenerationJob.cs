@@ -43,11 +43,18 @@ namespace Voxels
                 frequency *= noiseSettings.Lacunarity;
                 amplitude *= noiseSettings.Persistence;
             }
+
+            if (worldY > 0)
+            {
+                totalNoise -= worldY * 0.05f;
+            }
+            
+            totalNoise = Mathf.Max(totalNoise, 0);
                 
             ushort blockToPlace = 1;
             for (int i = 0; i < TerrainConfig.BlockNoises.Length; i++)
             {
-                if (totalNoise > TerrainConfig.BlockNoises[i].MinThreshold)
+                if (totalNoise >= TerrainConfig.BlockNoises[i].MinThreshold)
                 {
                     blockToPlace = TerrainConfig.BlockNoises[i].BlockID;
                 }

@@ -14,12 +14,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Voxels.BlockNoiseSO
   BlockNoises:
   - BlockTypeSO: {fileID: 11400000, guid: a2ae50d9b34f9864995c894ee39c166d, type: 2}
-    MinThreshold: 1.27
-  - BlockTypeSO: {fileID: 11400000, guid: 1294a317da867cc40bafc17c9a424c51, type: 2}
-    MinThreshold: 2.37
-  - BlockTypeSO: {fileID: 11400000, guid: af939e2e5ecd888488ad0e637fdbb735, type: 2}
-    MinThreshold: 1.91
-  - BlockTypeSO: {fileID: 11400000, guid: 334b065b9e843a24ead5a907b48b75e4, type: 2}
-    MinThreshold: 1.1
-  - BlockTypeSO: {fileID: 11400000, guid: dddfb61e6baa0e044bc858d561daf2ee, type: 2}
     MinThreshold: 0
+  - BlockTypeSO: {fileID: 11400000, guid: 1294a317da867cc40bafc17c9a424c51, type: 2}
+    MinThreshold: 3.53
+  - BlockTypeSO: {fileID: 11400000, guid: af939e2e5ecd888488ad0e637fdbb735, type: 2}
+    MinThreshold: 2.89
+  - BlockTypeSO: {fileID: 11400000, guid: 334b065b9e843a24ead5a907b48b75e4, type: 2}
+    MinThreshold: 2.26
+  - BlockTypeSO: {fileID: 11400000, guid: dddfb61e6baa0e044bc858d561daf2ee, type: 2}
+    MinThreshold: 1.5

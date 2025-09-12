@@ -70,6 +70,7 @@ namespace Voxels
             foreach (var requiredPos in requiredChunks)
             {
                 if (existingChunks.Contains(requiredPos)) continue;
+                if (allChunks.Chunks.ContainsKey(requiredPos)) continue;
                 
                 var newChunkEntity = ecb.CreateEntity();
                 
