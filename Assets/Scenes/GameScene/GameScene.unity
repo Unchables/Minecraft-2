@@ -165,6 +165,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8fdadd2c0f1449089487d4ff8292d3fa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  sensitivity: 5
 --- !u!114 &120897190
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -295,8 +296,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   chunkPoolSize: 216
   chunkSize: 32
-  chunkLoadRadius: 3
-  chunkUnloadRadius: 4
+  chunkLoadRadius: 4
+  chunkUnloadRadius: 5
   terrainHeight: 16
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

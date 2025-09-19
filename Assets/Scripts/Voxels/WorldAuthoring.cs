@@ -26,11 +26,8 @@ namespace Voxels
                     ChunkPoolSize = authoring.chunkPoolSize,
                     ChunkSize = authoring.chunkSize,
                     ChunkLoadRadius = authoring.chunkLoadRadius,
-                    ChunkUnloadRadius = authoring.chunkUnloadRadius,
                     TerrainHeight = authoring.terrainHeight
                 });
-
-                AddBuffer<ChunksToAdd>(worldEntity);
                 
                 AddComponent(worldEntity, new AllChunks
                 {

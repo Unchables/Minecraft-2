@@ -27,11 +27,11 @@ namespace Player
             foreach (var (playerLookInput, playerLookSensitivity, localTransform) in SystemAPI.Query<RefRO<PlayerLookInput>, RefRO<PlayerLookSensitivity>, RefRW<LocalTransform>>())
             {
                 // Calculate the rotation angles from input and sensitivity.
-                float yawAngle = playerLookInput.ValueRO.Value.x * playerLookSensitivity.ValueRO.Value;
+                float yawAngle = playerLookInput.ValueRO.Value.x * playerLookSensitivity.ValueRO.Value * 0.001f;
                 
                 // Invert the pitch angle by negating the Y input.
                 // This is standard because a positive mouse Y (moving mouse up) should result in pitching the camera upwards (negative rotation around the X-axis).
-                float pitchAngle = -playerLookInput.ValueRO.Value.y * playerLookSensitivity.ValueRO.Value;
+                float pitchAngle = -playerLookInput.ValueRO.Value.y * playerLookSensitivity.ValueRO.Value * 0.001f;
 
                 // Create a quaternion for the horizontal rotation (Yaw).
                 // This rotates around the global Y-axis.

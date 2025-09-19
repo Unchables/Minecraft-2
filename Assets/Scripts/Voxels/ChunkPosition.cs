@@ -14,6 +14,10 @@ namespace Voxels
         public int3 Value;
     }
 
+    public struct GenerateChunkMesh : IComponentData, IEnableableComponent
+    {
+    }
+
     /// <summary>
     /// An IComponentData that holds the lookup map for voxels with extra state.
     /// This map links a voxel's local 1D index to the separate Entity that holds its state data

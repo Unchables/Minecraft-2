@@ -18,17 +18,12 @@ namespace Player
                 {
                     Value = authoring.sensitivity
                 });
-                AddComponent(playerEntity, new LastPlayerChunkCoord {ChunkCoord = int.MinValue});
             }
         }
     }
     
     public struct PlayerTag : IComponentData { }
 
-    public struct LastPlayerChunkCoord : IComponentData
-    {
-        public int3 ChunkCoord;
-    }
     public struct PlayerLookInput : IComponentData
     {
         public float2 Value;

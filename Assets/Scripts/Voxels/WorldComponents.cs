@@ -11,7 +11,6 @@ namespace Voxels
         public int ChunkSize;
         public int ChunkPoolSize;
         public int ChunkLoadRadius;
-        public int ChunkUnloadRadius; // Slightly larger to prevent rapid load/unload
         public int TerrainHeight;
         public Entity ChunkPrefab; // A template entity for creating new chunks
     }
@@ -20,13 +19,6 @@ namespace Voxels
     public struct AllChunks : IComponentData
     {
         public NativeHashMap<int3, ChunkVoxels> Chunks;
-    }
-    
-    [ChunkSerializable]
-    public struct ChunksToAdd : IBufferElementData
-    {
-        public int3 Position;
-        public ChunkVoxels ChunkVoxels;
     }
     
     public struct TerrainGenerationData : IComponentData
