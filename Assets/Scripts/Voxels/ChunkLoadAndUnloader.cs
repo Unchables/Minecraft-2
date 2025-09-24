@@ -137,10 +137,4 @@ namespace Voxels
             }
         }
     }
-
-    public struct ChunkCreatedThisFrame
-    {
-        public Entity ChunkEntity;
-        public int3 Position;
-    }
 }

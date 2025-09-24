@@ -132,13 +132,14 @@ GameObject:
   - component: {fileID: 330585544}
   - component: {fileID: 330585547}
   - component: {fileID: 330585548}
+  - component: {fileID: 330585549}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!81 &330585544
 AudioListener:
   m_ObjectHideFlags: 0
@@ -264,14 +265,26 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7e9d6007ef1b18541ae156ec5d39ad3a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  moveSpeed: 5
-  flySpeed: 3
+  moveSpeed: 20
+  flySpeed: 20
   lookSensitivity: 0.2
+--- !u!114 &330585549
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3c966ab70fd23bf40a42e2cd91e60b60, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: '::'
 --- !u!1 &382428338
 GameObject:
   m_ObjectHideFlags: 0
@@ -284,7 +297,7 @@ GameObject:
   - component: {fileID: 382428340}
   - component: {fileID: 382428341}
   m_Layer: 0
-  m_Name: BlockDataBaker
+  m_Name: AtlasBaker
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -594,7 +607,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &991551023
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -773,7 +786,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Voxels.TerrainDataBaker
   noiseSettingsSO: {fileID: 11400000, guid: 03b6538303ffd1f4aa2222fc8a4d3203, type: 2}
-  blockNoiseSO: {fileID: 0}
+  blockNoiseSO: {fileID: 11400000, guid: 8c0123ca2ab066e49ac7eda28322ca2f, type: 2}
+  treeSettingsSO: {fileID: 11400000, guid: ca9dc82f07860d640b886a81291999af, type: 2}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

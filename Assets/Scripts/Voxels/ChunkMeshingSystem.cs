@@ -30,6 +30,8 @@ namespace Voxels
             // Get the singleton that holds our atlas and texture data
             var renderResources = SystemAPI.GetSingleton<VoxelRenderResources>();
 
+            var jobHandles = new NativeList<JobHandle>(Allocator.Temp);
+            
             // Query for all chunks that have voxel data but do not yet have mesh data.
             foreach (var (chunkVoxels, chunkPosition, chunkMeshRenderData, isChunkMeshGenerating, chunkHasVoxelData,
                          meshJobHandle, generateChunkMesh)
@@ -105,10 +107,12 @@ namespace Voxels
                 isChunkMeshGenerating.ValueRW = true;
                 
                 meshJobHandle.ValueRW.Value = mesherHandle;
-                state.Dependency = mesherHandle;
+                jobHandles.Add(mesherHandle);
                 
                 vertexCounter.Dispose(mesherHandle);
             }
+            
+            state.Dependency = JobHandle.CombineDependencies(jobHandles.AsArray());
         }
     }
 }

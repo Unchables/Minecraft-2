@@ -25,6 +25,9 @@ namespace Voxels
         {
             var ecb = new EntityCommandBuffer(state.WorldUpdateAllocator);
             var material = MaterialHolder.ChunkMaterial;
+
+            int maxMeshesToCreateThisFrame = 2;
+            int meshesCreatedThisFrame = 0;
             
             List<AddRenderMeshCommand> addRenderComponentsCommands = new List<AddRenderMeshCommand>();
             
@@ -33,10 +36,14 @@ namespace Voxels
                          .WithDisabled<ChunkHasMesh>()
                          .WithEntityAccess())
             {
+                meshesCreatedThisFrame++;
+                if (meshesCreatedThisFrame > maxMeshesToCreateThisFrame)
+                    break;
+                
                 if (!meshJobHandle.ValueRO.Value.IsCompleted)
                     continue;
                 
-                meshJobHandle.ValueRW.Value.Complete();
+                //meshJobHandle.ValueRW.Value.Complete();
                 
                 var vertices = chunkRenderData.ValueRO.Vertices;
                 var triangles = chunkRenderData.ValueRO.Triangles;

@@ -1,7 +1,9 @@
 ﻿using SimplexNoise;
 using Unity.Burst;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
+using Unity.Mathematics;
 
 namespace Voxels
 {
@@ -20,6 +22,8 @@ namespace Voxels
         {
             var terrainGenData = SystemAPI.GetSingleton<TerrainGenerationData>();
             
+            var jobHandles = new NativeList<JobHandle>(Allocator.Temp);
+            
             foreach (var (chunkVoxels, chunkPosition, isTerrainGenerating, terrainJobHandleData)
                      in SystemAPI.Query<RefRO<ChunkVoxels>, RefRO<ChunkPosition>, EnabledRefRW<IsChunkTerrainGenerating>, RefRW<TerrainJobHandle>>()
                          .WithDisabled<IsChunkTerrainGenerating>()
@@ -33,12 +37,15 @@ namespace Voxels
                     TerrainConfig = terrainGenData.TerrainConfig
                 };
 
-                var terrainJobHandle = terrainJob.Schedule(Chunk.ChunkSize*Chunk.ChunkSize*Chunk.ChunkSize, 2048, state.Dependency);
+                var terrainJobHandle = terrainJob.Schedule();
                 terrainJobHandleData.ValueRW.Value = terrainJobHandle;
-                state.Dependency = terrainJobHandle;
+                jobHandles.Add(terrainJobHandle);
+                //state.Dependency = terrainJobHandle;
 
                 isTerrainGenerating.ValueRW = true;
             }
+            
+            state.Dependency = JobHandle.CombineDependencies(jobHandles.AsArray());
             
             foreach (var (chunkHasVoxelData, terrainJobHandleData, isChunkTerrainGenerating)
                      in SystemAPI.Query<EnabledRefRW<ChunkHasVoxelData>, RefRW<TerrainJobHandle>, EnabledRefRO<IsChunkTerrainGenerating>>()
@@ -46,7 +53,7 @@ namespace Voxels
             {
                 if (!terrainJobHandleData.ValueRO.Value.IsCompleted) continue;
 
-                terrainJobHandleData.ValueRW.Value.Complete();
+                //terrainJobHandleData.ValueRW.Value.Complete();
                 
                 chunkHasVoxelData.ValueRW = true;
             }

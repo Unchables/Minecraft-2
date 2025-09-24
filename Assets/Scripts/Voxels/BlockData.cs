@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Voxels
 {
     [CreateAssetMenu(fileName = "NewBlockType", menuName = "Voxel/Block Type")]
-    public class BlockTypeSO : ScriptableObject
+    public class BlockData : ScriptableObject
     {
         [Header("Block Info")]
         public string BlockName;

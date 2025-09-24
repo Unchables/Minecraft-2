@@ -7,21 +7,43 @@ namespace Voxels
 {
     public class TerrainDataBaker : MonoBehaviour
     {
-        [SerializeField] NoiseSettingsSO noiseSettingsSO;
+        [SerializeField] NoiseSettingsSO terrainSettingsSO;
         [SerializeField] BlockNoiseSO blockNoiseSO;
+        [SerializeField] TreeSettingsSO treeSettingsSO;
+        [SerializeField] NoiseSettingsSO treePlacementSettingsSO;
         void Start()
         {
-            NoiseSettings noiseSettings = new NoiseSettings
+            NoiseSettings terrainNoise = new NoiseSettings
             {
-                Frequency = noiseSettingsSO.frequency,
-                Octaves = noiseSettingsSO.octaves,
-                Seed = noiseSettingsSO.seed,
-                Lacunarity = noiseSettingsSO.lacunarity,
-                Persistence = noiseSettingsSO.persistence,
-                Amplitude = noiseSettingsSO.amplitude
+                Frequency = terrainSettingsSO.frequency,
+                Octaves = terrainSettingsSO.octaves,
+                Seed = terrainSettingsSO.seed,
+                Lacunarity = terrainSettingsSO.lacunarity,
+                Persistence = terrainSettingsSO.persistence,
+                Amplitude = terrainSettingsSO.amplitude
+            };
+            NoiseSettings treePlacementNoise = new NoiseSettings
+            {
+                Frequency = treePlacementSettingsSO.frequency,
+                Octaves = treePlacementSettingsSO.octaves,
+                Seed = treePlacementSettingsSO.seed,
+                Lacunarity = treePlacementSettingsSO.lacunarity,
+                Persistence = treePlacementSettingsSO.persistence,
+                Amplitude = treePlacementSettingsSO.amplitude
+            };
+            
+            TreeSettings treeSettings = new TreeSettings
+            {
+                LogBlockID = treeSettingsSO.LogBlock.BlockID,
+                LeafBlockID = treeSettingsSO.LeafBlock.BlockID,
+                SurfaceBlockID = treeSettingsSO.SurfaceBlock.BlockID,
+                MinTrunkHeight = treeSettingsSO.MinTrunkHeight,
+                MaxTrunkHeight = treeSettingsSO.MaxTrunkHeight,
+                MaxLeafRadius = treeSettingsSO.MaxLeafRadius,
+                SpawnRate = treeSettingsSO.SpawnRate
             };
 
-            var orderedList = blockNoiseSO.BlockNoises.OrderBy(b => b.MinThreshold).ToArray();
+            var orderedList = blockNoiseSO.BlockNoises.OrderByDescending(b => b.MinThreshold).ToArray();
             
             NativeArray<BlockNoise> blockNoises =
                 new NativeArray<BlockNoise>(blockNoiseSO.BlockNoises.Count, Allocator.Persistent);
@@ -30,7 +52,7 @@ namespace Voxels
             {
                 blockNoises[i] = new BlockNoise
                 {
-                    BlockID = orderedList[i].BlockTypeSO.BlockID,
+                    BlockID = orderedList[i].blockData.BlockID,
                     MinThreshold = orderedList[i].MinThreshold
                 };
             }
@@ -45,8 +67,11 @@ namespace Voxels
             {
                 TerrainConfig = new TerrainConfig
                 {
-                    NoiseSettings = noiseSettings,
-                    BlockNoises = blockNoises
+                    TerrainNoise = terrainNoise,
+                    BlockNoises = blockNoises,
+                    
+                    TreeSettings = treeSettings,
+                    TreePlacementNoise = treePlacementNoise
                 }
             });
         }

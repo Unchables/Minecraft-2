@@ -10,11 +10,11 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 100ce05c98534b71bfb37473541151c6, type: 3}
-  m_Name: NoiseSettings
+  m_Name: TreeNoise
   m_EditorClassIdentifier: Assembly-CSharp::Voxels.NoiseSettingsSO
   seed: 123
-  frequency: 0.02
+  frequency: 2
   amplitude: 1
   lacunarity: 2
   persistence: 0.5
-  octaves: 4
+  octaves: 1

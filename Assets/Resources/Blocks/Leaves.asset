@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d51292dde939435c82bc2d398e1037a2, type: 3}
+  m_Name: Leaves
+  m_EditorClassIdentifier: Assembly-CSharp::Voxels.BlockTypeSO
+  BlockName: Dirt
+  IsSolid: 1
+  TopFaceTexture: {fileID: 2800000, guid: 53eb5a8d4fa0eb947b847162f49f39cc, type: 3}
+  SideFaceTexture: {fileID: 2800000, guid: 53eb5a8d4fa0eb947b847162f49f39cc, type: 3}
+  BottomFaceTexture: {fileID: 2800000, guid: 53eb5a8d4fa0eb947b847162f49f39cc, type: 3}
+  BlockID: 3

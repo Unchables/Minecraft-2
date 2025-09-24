@@ -12,12 +12,17 @@ namespace Player
         void Start()
         {
             entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-            var query = entityManager.CreateEntityQuery(typeof(PlayerTag));
-            query.TryGetSingletonEntity<PlayerTag>(out entity);
         }
 
         void Update()
         {
+            if (entity.Index == 0)
+            {
+                var query = entityManager.CreateEntityQuery(typeof(PlayerTag));
+                query.TryGetSingletonEntity<PlayerTag>(out entity);
+                if (entity.Index == 0) return;
+            }
+            
             transform.position = entityManager.GetComponentData<LocalTransform>(entity).Position;
             transform.rotation = entityManager.GetComponentData<LocalTransform>(entity).Rotation;
         }

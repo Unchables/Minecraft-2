@@ -1,0 +1,21 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6b0ba280a11c43798683fd31b44d8cfe, type: 3}
+  m_Name: TreeSettings
+  m_EditorClassIdentifier: Assembly-CSharp::Voxels.TreeSettingsSO
+  LogBlock: {fileID: 11400000, guid: c06798d3888204b42a563e780518877f, type: 2}
+  LeafBlock: {fileID: 11400000, guid: 2986e03a82fcc0b47a876bc36f3bdf1d, type: 2}
+  SurfaceBlock: {fileID: 11400000, guid: dddfb61e6baa0e044bc858d561daf2ee, type: 2}
+  MinTrunkHeight: 7
+  MaxTrunkHeight: 22
+  MaxLeafRadius: 5
+  SpawnRate: 0.0276

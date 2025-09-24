@@ -14,7 +14,7 @@ namespace Voxels
     [System.Serializable]
     public struct BlockNoiseObject
     {
-        public BlockTypeSO BlockTypeSO;
+        public BlockData blockData;
         [Range(0, 10)] public float MinThreshold;
     }
 }

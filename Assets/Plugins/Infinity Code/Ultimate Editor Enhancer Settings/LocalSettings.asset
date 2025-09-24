@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f8d45f3740a349d2bf7ea1c582228605, type: 3}
   m_Name: LocalSettings
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier: UltimateEditorEnhancer-Editor::InfinityCode.UltimateEditorEnhancer.LocalSettings
   _askMaximizeGameView: 1
   _collapseQuickAccessBar: 0
   _enhancedHierarchyShown: 0
