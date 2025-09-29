@@ -8,6 +8,7 @@ namespace Player
     {
         public Entity entity;
         public EntityManager entityManager;
+        public Vector3 offset;
     
         void Start()
         {
@@ -23,8 +24,8 @@ namespace Player
                 if (entity.Index == 0) return;
             }
             
-            transform.position = entityManager.GetComponentData<LocalTransform>(entity).Position;
-            transform.rotation = entityManager.GetComponentData<LocalTransform>(entity).Rotation;
+            transform.position = (Vector3)entityManager.GetComponentData<LocalTransform>(entity).Position + offset;
+            transform.rotation = entityManager.GetComponentData<PlayerLookRotation>(entity).Value;
         }
     }
 }

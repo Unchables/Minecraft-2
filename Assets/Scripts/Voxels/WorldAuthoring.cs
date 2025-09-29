@@ -11,7 +11,6 @@ namespace Voxels
         public int chunkPoolSize = 216;
         public int chunkSize = 32;
         public int chunkLoadRadius = 8;
-        public int chunkUnloadRadius = 9;
         public int terrainHeight = 16;
 
         class Baker : Baker<WorldAuthoring>
@@ -31,8 +30,11 @@ namespace Voxels
                 
                 AddComponent(worldEntity, new AllChunks
                 {
-                    Chunks = new NativeHashMap<int3, ChunkVoxels>(1000, Allocator.Persistent)
+                    Chunks = new NativeHashMap<int3, ChunkVoxels>((int)math.pow(authoring.chunkLoadRadius * 1.5, 3), Allocator.Persistent)
                 });
+
+                AddComponent(worldEntity, new FinishedInitialGeneration());
+                SetComponentEnabled<FinishedInitialGeneration>(worldEntity, false);
             }
         }
     }

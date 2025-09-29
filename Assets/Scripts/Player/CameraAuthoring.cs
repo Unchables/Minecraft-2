@@ -14,7 +14,7 @@ namespace Player
                 var playerEntity = GetEntity(TransformUsageFlags.Dynamic);
                 AddComponent<CameraTag>(playerEntity);
                 AddComponent<CharacterMoveInput>(playerEntity);
-                AddComponent(playerEntity, new CharacterMoveSpeed() { Value = authoring.moveSpeed });
+                AddComponent(playerEntity, new CharacterMoveStats() { WalkSpeed = authoring.moveSpeed });
             }
         }
     }

@@ -1,4 +1,5 @@
-﻿using Player;
+﻿using InfinityCode.UltimateEditorEnhancer.EditorMenus.Layouts;
+using Player;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
@@ -13,6 +14,7 @@ namespace Voxels
     {
         public void OnCreate(ref SystemState state)
         {
+            state.RequireForUpdate<FinishedInitialGeneration>();
             state.RequireForUpdate<AllChunks>();
             state.RequireForUpdate<WorldSettings>();
             state.RequireForUpdate<PlayerTag>();
@@ -20,8 +22,9 @@ namespace Voxels
 
         public void OnUpdate(ref SystemState state)
         {
-            var worldSettings = SystemAPI.GetSingleton<WorldSettings>();
+            var worldEntity = SystemAPI.GetSingletonEntity<WorldSettings>();
             var playerEntity = SystemAPI.GetSingletonEntity<PlayerTag>();
+            var worldSettings = SystemAPI.GetSingleton<WorldSettings>();
             var allChunks = SystemAPI.GetSingleton<AllChunks>();
             
             int3 currentPlayerChunkPos = (int3)math.round(SystemAPI.GetComponent<LocalTransform>(playerEntity).Position / worldSettings.ChunkSize);

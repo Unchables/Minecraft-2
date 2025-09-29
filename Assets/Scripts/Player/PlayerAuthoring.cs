@@ -14,6 +14,8 @@ namespace Player
                 var playerEntity = GetEntity(TransformUsageFlags.Dynamic);
                 AddComponent<PlayerTag>(playerEntity);
                 AddComponent<PlayerLookInput>(playerEntity);
+                AddComponent<PlayerLookRotation>(playerEntity);
+                AddComponent<PlayerLookAngles>(playerEntity);
                 AddComponent(playerEntity, new PlayerLookSensitivity
                 {
                     Value = authoring.sensitivity
@@ -31,5 +33,14 @@ namespace Player
     public struct PlayerLookSensitivity : IComponentData
     {
         public float Value;
+    }
+    public struct PlayerLookRotation : IComponentData
+    {
+        public quaternion Value;
+    }
+    public struct PlayerLookAngles : IComponentData
+    {
+        public float Yaw;   // Total horizontal rotation in radians
+        public float Pitch; // Total vertical rotation in radians
     }
 }

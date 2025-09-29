@@ -4,10 +4,12 @@ using Unity.Collections;
 using Unity.Collections.NotBurstCompatible;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Physics;
 using Unity.Rendering;
 using Unity.Transforms; // Required for RenderMesh, RenderBounds etc.
 using UnityEngine; // Required for creating Mesh objects
-using UnityEngine.Rendering; // Required for SubMeshDescriptor
+using UnityEngine.Rendering;
+using MeshCollider = UnityEngine.MeshCollider; // Required for SubMeshDescriptor
 
 namespace Voxels
 {
@@ -18,7 +20,7 @@ namespace Voxels
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            
+            state.RequireForUpdate<WorldSettings>();
         }
 
         public void OnUpdate(ref SystemState state)
@@ -77,6 +79,21 @@ namespace Voxels
                     Triangles = triangles,
                 });
 
+                // Define the physics material properties.
+                var physicsMaterial = Unity.Physics.Material.Default;
+                physicsMaterial.Friction = 0.6f;
+                physicsMaterial.Restitution = 0.1f;
+
+                // This is the core step: "Bake" the vertices and triangles into an
+                // immutable, high-performance BlobAssetReference<Collider>.
+                var colliderBlob = Unity.Physics.MeshCollider.Create(mesh, CollisionFilter.Default, physicsMaterial);
+                    
+                // Add the PhysicsCollider component to the entity.
+                // This component just holds a reference to the collider blob asset.
+                ecb.AddComponent(entity, new PhysicsCollider { Value = colliderBlob });
+                
+                ecb.AddSharedComponent(entity, new PhysicsWorldIndex { Value = 0 });
+                
                 ecb.AddComponent(entity, new LocalTransform
                 {
                     Position = chunkPos.ValueRO.Value * 32,
@@ -86,6 +103,8 @@ namespace Voxels
                 
                 chunkHasMesh.ValueRW = true;
             }
+            
+            if(meshesCreatedThisFrame == 0) SystemAPI.SetComponentEnabled<FinishedInitialGeneration>(SystemAPI.GetSingletonEntity<WorldSettings>(), true);
 
             foreach (var command in addRenderComponentsCommands)
             {

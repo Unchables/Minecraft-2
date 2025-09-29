@@ -18,15 +18,16 @@ namespace Player
             var moveInput = (float2)_input.Player.Move.ReadValue<Vector2>();
             var lookInput = (float2)_input.Player.Look.ReadValue<Vector2>();
             
-            float yValue = 0;
-            yValue += _input.Player.Jump.ReadValue<float>();
-            yValue -= _input.Player.Crouch.ReadValue<float>();
+            bool isJumping = _input.Player.Jump.IsPressed();
+            bool isSprinting = _input.Player.Sprint.IsPressed();
             
-            float3 inputDirection = new float3(moveInput.x, yValue, moveInput.y);
+            float2 inputDirection = new float2(moveInput.x, moveInput.y);
             
             foreach (var (characterMoveInput, playerLookInput) in SystemAPI.Query<RefRW<CharacterMoveInput>, RefRW<PlayerLookInput>>().WithAll<PlayerTag>())
             {
-                characterMoveInput.ValueRW.Value = inputDirection;
+                characterMoveInput.ValueRW.MoveValue = inputDirection;
+                characterMoveInput.ValueRW.IsJumping = isJumping;
+                characterMoveInput.ValueRW.IsSprinting = isSprinting;
                 playerLookInput.ValueRW.Value = lookInput;
             }
         }
