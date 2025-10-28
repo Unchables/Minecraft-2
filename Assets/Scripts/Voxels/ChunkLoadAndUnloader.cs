@@ -14,7 +14,6 @@ namespace Voxels
     {
         public void OnCreate(ref SystemState state)
         {
-            state.RequireForUpdate<FinishedInitialGeneration>();
             state.RequireForUpdate<AllChunks>();
             state.RequireForUpdate<WorldSettings>();
             state.RequireForUpdate<PlayerTag>();

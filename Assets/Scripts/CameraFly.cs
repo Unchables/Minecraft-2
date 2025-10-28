@@ -22,8 +22,8 @@ public class CameraFly : MonoBehaviour
     void Awake()
     {
         // --- Lock and Hide Cursor ---
-        Cursor.lockState = CursorLockMode.Locked;
-        Cursor.visible = false;
+        //Cursor.lockState = CursorLockMode.Locked;
+        //Cursor.visible = false;
     }
 
     void OnEnable()

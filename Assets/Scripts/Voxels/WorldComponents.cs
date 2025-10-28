@@ -25,9 +25,4 @@ namespace Voxels
     {
         public TerrainConfig TerrainConfig;
     }
-    
-    public struct FinishedInitialGeneration : IComponentData, IEnableableComponent
-    {
-        
-    }
 }

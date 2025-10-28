@@ -1,40 +1,62 @@
+// ---- FILE: ChunkMeshFinalizerSystem.cs ----
+
 using System.Collections.Generic;
+using System.Linq;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.NotBurstCompatible;
 using Unity.Entities;
+using Unity.Entities.Content;
+using Unity.Entities.Graphics; // This namespace is required
 using Unity.Mathematics;
 using Unity.Physics;
 using Unity.Rendering;
-using Unity.Transforms; // Required for RenderMesh, RenderBounds etc.
-using UnityEngine; // Required for creating Mesh objects
+using Unity.Transforms;
+using UnityEngine;
 using UnityEngine.Rendering;
-using MeshCollider = UnityEngine.MeshCollider; // Required for SubMeshDescriptor
+using Material = UnityEngine.Material;
 
 namespace Voxels
 {
-    [UpdateInGroup(typeof(SimulationSystemGroup))] // Run in the presentation group, after simulation
+    // A temporary command struct to hold all the data needed for one chunk's finalization.
+    // This allows us to separate reading data from writing structural changes.
+    public class FinalizeMeshCommand
+    {
+        public Entity Entity;
+        public Mesh ChunkMesh;
+        public RenderMeshArray RenderMeshArray;
+        public RenderMeshDescription RenderDescription;
+        public MaterialMeshInfo MaterialMeshInfo;
+
+        // We also need to own the native lists so we can dispose them later
+        public NativeList<float3> Vertices;
+        public NativeList<int> Triangles;
+    }
+
+    [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(ChunkMeshingSystem))]
     public partial struct ChunkMeshFinalizerSystem : ISystem
     {
-        [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
-            state.RequireForUpdate<WorldSettings>();
         }
-
+        
         public void OnUpdate(ref SystemState state)
         {
-            var ecb = new EntityCommandBuffer(state.WorldUpdateAllocator);
+            var ecb = new EntityCommandBuffer(World.DefaultGameObjectInjectionWorld.UpdateAllocator.ToAllocator);
             var material = MaterialHolder.ChunkMaterial;
+            var commandList = new List<FinalizeMeshCommand>();
 
-            int maxMeshesToCreateThisFrame = 2;
+            int maxMeshesToCreateThisFrame = 4;
             int meshesCreatedThisFrame = 0;
             
-            List<AddRenderMeshCommand> addRenderComponentsCommands = new List<AddRenderMeshCommand>();
+            // =================================================================================
+            //  PHASE 1: READ & PREPARE
+            //  Iterate over entities, read data, and prepare commands. No structural changes here.
+            // =================================================================================
             
-            foreach (var (chunkPos, chunkRenderData, meshJobHandle, chunkHasMesh, chunkIsGeneratingMesh, entity) in SystemAPI
-                         .Query<RefRO<ChunkPosition>, RefRO<ChunkMeshRenderData>, RefRW<MeshJobHandle>, EnabledRefRW<ChunkHasMesh>, EnabledRefRO<IsChunkMeshGenerating>>()
+            foreach (var (chunkPos, chunkRenderData, meshJobHandle, chunkHasMesh, chunkIsGeneratingMesh, chunkVoxels, entity) in SystemAPI
+                         .Query<RefRO<ChunkPosition>, RefRO<ChunkMeshRenderData>, RefRW<MeshJobHandle>, EnabledRefRW<ChunkHasMesh>, EnabledRefRO<IsChunkMeshGenerating>, RefRO<ChunkVoxels>>()
                          .WithDisabled<ChunkHasMesh>()
                          .WithEntityAccess())
             {
@@ -50,90 +72,65 @@ namespace Voxels
                 var vertices = chunkRenderData.ValueRO.Vertices;
                 var triangles = chunkRenderData.ValueRO.Triangles;
                 var uvs = chunkRenderData.ValueRO.UVs;
-
-                var mesh = new Mesh
-                {
-                    name = "VoxelChunkMesh"
-                };
                 
+                var mesh = new Mesh { name = "VoxelChunkMesh" };
                 mesh.SetVertices(vertices.AsArray());
                 mesh.SetTriangles(triangles.ToArrayNBC(), 0, false);
                 mesh.SetUVs(0, uvs.AsArray());
-
                 mesh.RecalculateNormals();
                 mesh.RecalculateBounds();
                 
-                var desc = new RenderMeshDescription(
-                    shadowCastingMode: ShadowCastingMode.Off);
-
-                var renderMeshArray = new RenderMeshArray(new [] { material }, new [] { mesh });
-        
-                addRenderComponentsCommands.Add(new AddRenderMeshCommand
+                // Prepare all the data needed for the command
+                var command = new FinalizeMeshCommand
                 {
-                    Desc = desc,
                     Entity = entity,
-                    RenderMeshArray = renderMeshArray,
-                    MatMeshInfo = MaterialMeshInfo.FromRenderMeshArrayIndices(0, 0),
-                    
+                    ChunkMesh = mesh,
+                    RenderDescription = new RenderMeshDescription(ShadowCastingMode.On, receiveShadows: true),
+                    RenderMeshArray = new RenderMeshArray(new[] { material }, new[] { mesh }),
+                    MaterialMeshInfo = MaterialMeshInfo.FromRenderMeshArrayIndices(0, 0),
                     Vertices = vertices,
-                    Triangles = triangles,
-                });
-
-                // Define the physics material properties.
-                var physicsMaterial = Unity.Physics.Material.Default;
-                physicsMaterial.Friction = 0.6f;
-                physicsMaterial.Restitution = 0.1f;
-
-                // This is the core step: "Bake" the vertices and triangles into an
-                // immutable, high-performance BlobAssetReference<Collider>.
-                var colliderBlob = Unity.Physics.MeshCollider.Create(mesh, CollisionFilter.Default, physicsMaterial);
-                    
-                // Add the PhysicsCollider component to the entity.
-                // This component just holds a reference to the collider blob asset.
-                ecb.AddComponent(entity, new PhysicsCollider { Value = colliderBlob });
+                    Triangles = triangles
+                };
                 
-                ecb.AddSharedComponent(entity, new PhysicsWorldIndex { Value = 0 });
-                
-                ecb.AddComponent(entity, new LocalTransform
-                {
-                    Position = chunkPos.ValueRO.Value * 32,
-                    Rotation = quaternion.identity,
-                    Scale = 1
-                });
+                commandList.Add(command);
                 
                 chunkHasMesh.ValueRW = true;
             }
             
-            if(meshesCreatedThisFrame == 0) SystemAPI.SetComponentEnabled<FinishedInitialGeneration>(SystemAPI.GetSingletonEntity<WorldSettings>(), true);
-
-            foreach (var command in addRenderComponentsCommands)
+            // =================================================================================
+            //  PHASE 2: WRITE & EXECUTE
+            //  Now that iteration is finished, we can safely perform structural changes.
+            // =================================================================================
+            foreach (var command in commandList)
             {
+                // 1. Use the high-level utility to add all standard rendering components.
+                //    This is a complex structural change that uses the EntityManager directly.
                 RenderMeshUtility.AddComponents(
-                        command.Entity,
-                        state.EntityManager,
-                        command.Desc,
-                        command.RenderMeshArray,
-                        command.MatMeshInfo);
+                    command.Entity,
+                    state.EntityManager,
+                    in command.RenderDescription,
+                    command.RenderMeshArray,
+                    command.MaterialMeshInfo);
 
+                // 3. Queue up simple component additions and changes in the ECB.
+                var physicsMaterial = Unity.Physics.Material.Default;
+                var colliderBlob = Unity.Physics.MeshCollider.Create(command.ChunkMesh, CollisionFilter.Default, physicsMaterial);
+                ecb.AddComponent(command.Entity, new PhysicsCollider { Value = colliderBlob });
+                
+                ecb.AddComponent(command.Entity, new LocalTransform
+                {
+                    Position = SystemAPI.GetComponent<ChunkPosition>(command.Entity).Value * 32,
+                    Rotation = quaternion.identity,
+                    Scale = 1
+                });
+
+                // 4. Clean up native collections now that they've been used for the mesh and collider.
                 command.Vertices.Dispose();
                 command.Triangles.Dispose();
             }
-            
+
+            // Finally, play back all the queued changes from the ECB.
             ecb.Playback(state.EntityManager);
         }
-
-        [BurstCompile]
-        public void OnDestroy(ref SystemState state) { }
-    }
-
-    public class AddRenderMeshCommand
-    {
-        public Entity Entity;
-        public RenderMeshDescription Desc;
-        public RenderMeshArray RenderMeshArray;
-        public MaterialMeshInfo MatMeshInfo;
-        
-        public NativeList<float3> Vertices;
-        public NativeList<int> Triangles;
     }
 }

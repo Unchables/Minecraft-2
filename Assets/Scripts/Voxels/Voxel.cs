@@ -61,5 +61,10 @@ namespace Voxels
             // 3. | (OR): Combines the old ID with the new rotation.
             Data = (ushort)((Data & 0xFFF0) | (rotation & 0x0F));
         }
+
+        public bool IsSolid()
+        {
+            return GetBlockID() != AirID.Value;
+        }
     }
 }

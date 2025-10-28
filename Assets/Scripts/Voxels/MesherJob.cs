@@ -1,375 +1,378 @@
-﻿using System.Threading;
-using Unity.Burst;
+﻿using Unity.Burst;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Mathematics;
 
 namespace Voxels
 {
-    [BurstCompile]
+    [BurstCompile(CompileSynchronously = true, FloatMode = FloatMode.Fast)]
     public partial struct MesherJob : IJob
     {
         // --- Input Data ---
         [ReadOnly] public int ChunkSize;
         [ReadOnly] public int AtlasSizeInTiles;
 
-        // Voxel Data
         [ReadOnly] public NativeArray<Voxel> Voxels;
-        [ReadOnly] public NativeArray<Voxel> LeftVoxels;   // -X
-        [ReadOnly] public NativeArray<Voxel> RightVoxels;  // +X
-        [ReadOnly] public NativeArray<Voxel> DownVoxels;   // -Y
-        [ReadOnly] public NativeArray<Voxel> UpVoxels;     // +Y
-        [ReadOnly] public NativeArray<Voxel> BackVoxels;   // -Z
-        [ReadOnly] public NativeArray<Voxel> ForwardVoxels;// +Z
-        
-        // Texture Atlas Mapping Data
+        [ReadOnly] public NativeArray<Voxel> LeftVoxels, RightVoxels, DownVoxels, UpVoxels, BackVoxels, ForwardVoxels;
         [ReadOnly] public NativeArray<BlockTextureData> BlockTypeData;
 
         // --- Output Data ---
         public NativeList<float3> Vertices;
-        [WriteOnly] public NativeList<int> Triangles;
-        [WriteOnly] public NativeList<float2> UVs;
-        
-        /// <summary>
-        /// This method is executed for every single voxel in the chunk in parallel.
-        /// </summary>
+        public NativeList<int> Triangles;
+        public NativeList<float2> UVs;
+
+        private struct GreedyQuad
+        {
+            public ushort BlockId;
+            public int Axis;      // 0 = Y (faces normal +/- Y), 1 = X, 2 = Z
+            public int Direction; // 0 = positive normal (face points +axis), 1 = negative normal (face points -axis)
+            public int Slice;     // slice index along the axis (0..ChunkSize)
+            public int X, Y;      // origin (in 2D plane coordinates)
+            public int Width, Height;
+        }
+
         public void Execute()
         {
-            for (int x = 0; x < ChunkSize; x++)
+            // Temporary mask used per-plane
+            var mask = new NativeArray<ushort>(ChunkSize * ChunkSize, Allocator.Temp);
+
+            // For each axis and direction, perform greedy meshing
+            for (int axis = 0; axis < 3; axis++)
             {
-                for (int y = 0; y < ChunkSize; y++)
+                for (int dir = 0; dir < 2; dir++)
                 {
-                    for (int z = 0; z < ChunkSize; z++)
+                    // For each slice along the axis from 0..ChunkSize (faces between voxels)
+                    for (int slice = 0; slice <= ChunkSize; slice++)
                     {
-                        var index = GetIndexFromCoords(x, y, z);
-                        
-                        ushort blockID = Voxels[index].GetBlockID();
-                        
-                        if (blockID == AirID.Value) continue;
-                        
-                        if(IsFaceVisible(x, y + 1, z)) AddFaceData(new int3(x, y, z), 0, blockID);
-                        if(IsFaceVisible(x, y - 1, z)) AddFaceData(new int3(x, y, z), 1, blockID);
-                        if(IsFaceVisible(x - 1, y, z)) AddFaceData(new int3(x, y, z), 2, blockID);
-                        if(IsFaceVisible(x + 1, y, z)) AddFaceData(new int3(x, y, z), 3, blockID);
-                        if(IsFaceVisible(x, y, z + 1)) AddFaceData(new int3(x, y, z), 4, blockID);
-                        if(IsFaceVisible(x, y, z - 1)) AddFaceData(new int3(x, y, z), 5, blockID);
+                        // Build mask for this plane: mask[u + v * ChunkSize] = blockId (0 = no face)
+                        for (int v = 0; v < ChunkSize; v++)
+                        {
+                            for (int u = 0; u < ChunkSize; u++)
+                            {
+                                // Map (axis, slice, u, v) -> two neighboring voxel positions A and B.
+                                // Face exists where exactly one of A/B is solid.
+                                // We will treat coordinates in local space 0..ChunkSize-1 for voxels.
+                                bool aSolid, bSolid;
+                                ushort aId = 0, bId = 0;
+
+                                // Get voxel positions for A and B depending on axis:
+                                // axis 0 (Y): A = (u, slice - 1, v), B = (u, slice, v)
+                                // axis 1 (X): A = (slice - 1, u, v), B = (slice, u, v)
+                                // axis 2 (Z): A = (u, v, slice - 1), B = (u, v, slice)
+                                GetTwoVoxelsForFace(axis, slice, u, v, out aSolid, out aId, out bSolid, out bId);
+
+                                ushort maskVal = 0;
+                                if (aSolid != bSolid)
+                                {
+                                    // which side is solid?
+                                    // We'll use convention: direction==0 means face normal points +axis (so solid is on negative side A)
+                                    // If dir==0, we want faces where A is solid and B is air (A solid, B not)
+                                    // If dir==1, we want faces where B is solid and A is air
+                                    if (dir == 0 && aSolid && !bSolid)
+                                        maskVal = aId;
+                                    else if (dir == 1 && bSolid && !aSolid)
+                                        maskVal = bId;
+                                }
+
+                                mask[u + v * ChunkSize] = maskVal;
+                            }
+                        }
+
+                        // Run greedy rectangle merge on mask
+                        for (int v = 0; v < ChunkSize; v++)
+                        {
+                            for (int u = 0; u < ChunkSize; )
+                            {
+                                ushort currentId = mask[u + v * ChunkSize];
+                                if (currentId == 0) { u++; continue; }
+
+                                // Determine width
+                                int width = 1;
+                                while (u + width < ChunkSize && mask[(u + width) + v * ChunkSize] == currentId) width++;
+
+                                // Determine height
+                                int height = 1;
+                                bool stop = false;
+                                while (v + height < ChunkSize && !stop)
+                                {
+                                    for (int k = 0; k < width; k++)
+                                    {
+                                        if (mask[(u + k) + (v + height) * ChunkSize] != currentId) { stop = true; break; }
+                                    }
+                                    if (!stop) height++;
+                                }
+
+                                // Zero-out consumed area
+                                for (int hv = 0; hv < height; hv++)
+                                    for (int wu = 0; wu < width; wu++)
+                                        mask[(u + wu) + (v + hv) * ChunkSize] = 0;
+
+                                // Emit quad: origin (u,v), size (width,height) on this slice, axis, dir, blockId = currentId
+                                var q = new GreedyQuad
+                                {
+                                    BlockId = currentId,
+                                    Axis = axis,
+                                    Direction = dir,
+                                    Slice = slice,
+                                    X = u,
+                                    Y = v,
+                                    Width = width,
+                                    Height = height
+                                };
+                                AppendGreedyQuad(q);
+
+                                // advance u
+                                u += width;
+                            }
+                        }
                     }
                 }
             }
-        }
-        
-        /// <summary>
-        /// Checks if a face is visible by checking the block in the given direction.
-        /// Handles checks inside the current chunk, in neighbor chunks, and at world boundaries.
-        /// </summary>
-        private bool IsFaceVisible(int x, int y, int z)
-        {
-            if (x < 0)
-            {
-                if (LeftVoxels.Length == 0) return true;
-                return LeftVoxels[GetIndexFromCoords(ChunkSize - 1, y, z)].GetBlockID() == AirID.Value;
-            }
-            if (x >= ChunkSize)
-            {
-                if (RightVoxels.Length == 0) return true;
-                return RightVoxels[GetIndexFromCoords(0, y, z)].GetBlockID() == AirID.Value;
-            }
-            if (y < 0)
-            {
-                if (DownVoxels.Length == 0) return true;
-                return DownVoxels[GetIndexFromCoords(x, ChunkSize - 1, z)].GetBlockID() == AirID.Value;
-            }
-            if (y >= ChunkSize)
-            {
-                if (UpVoxels.Length == 0) return true;
-                return UpVoxels[GetIndexFromCoords(x, 0, z)].GetBlockID() == AirID.Value;
-            }
-            if (z < 0)
-            {
-                if (BackVoxels.Length == 0) return true;
-                return BackVoxels[GetIndexFromCoords(x, y, ChunkSize - 1)].GetBlockID() == AirID.Value;
-            }
-            if (z >= ChunkSize)
-            {
-                if (ForwardVoxels.Length == 0) return true;
-                return ForwardVoxels[GetIndexFromCoords(x, y, 0)].GetBlockID() == AirID.Value;
-            }
-            
-            // Neighbor is inside the current chunk
-            return Voxels[GetIndexFromCoords(x, y, z)].GetBlockID() == AirID.Value;
+
+            mask.Dispose();
         }
 
-        /// <summary>
-        /// Adds the vertex, triangle, and UV data for a single visible face.
-        /// Must be called from an unsafe context.
-        /// </summary>
-        private unsafe void AddFaceData(int3 position, int faceIndex, ushort blockID)
+        // Helper: fetch the two voxels on either side of the face plane
+        // Uses local voxel coords — delegate to GetVoxel which accepts padded coords (x+1,y+1,z+1)
+        [BurstCompile]
+        private void GetTwoVoxelsForFace(int axis, int slice, int u, int v,
+                                         out bool aSolid, out ushort aId,
+                                         out bool bSolid, out ushort bId)
         {
-            // --- UV Calculation ---
-            BlockTextureData blockTextures = BlockTypeData[blockID];
+            // A is the voxel with coordinate index (slice - 1) along axis
+            // B is the voxel with coordinate index (slice) along axis
+            int ax = 0, ay = 0, az = 0;
+            int bx = 0, by = 0, bz = 0;
+
+            switch (axis)
+            {
+                case 0: // Y axis: coords (u, *, v)
+                    ax = u; ay = slice - 1; az = v;
+                    bx = u; by = slice;     bz = v;
+                    break;
+                case 1: // X axis: coords (*, u, v)
+                    ax = slice - 1; ay = u; az = v;
+                    bx = slice;     by = u; bz = v;
+                    break;
+                default: // 2 Z axis: coords (u, v, *)
+                    ax = u; ay = v; az = slice - 1;
+                    bx = u; by = v; bz = slice;
+                    break;
+            }
+
+            // Use GetVoxel with padded coords (local + 1)
+            Voxel avox = GetVoxel(ax + 1, ay + 1, az + 1);
+            Voxel bvox = GetVoxel(bx + 1, by + 1, bz + 1);
+
+            aSolid = avox.IsSolid();
+            bSolid = bvox.IsSolid();
+            aId = aSolid ? avox.GetBlockID() : (ushort)0;
+            bId = bSolid ? bvox.GetBlockID() : (ushort)0;
+        }
+
+        // Emit vertices, UVs and triangles for the greedy quad.
+        // The mapping places the quad on world-local voxel coordinates (0..ChunkSize) so mesh can be positioned at chunk origin.
+        [BurstCompile]
+        private void AppendGreedyQuad(GreedyQuad quad)
+        {
+            // Texture/UV
+            BlockTextureData blockTextures = BlockTypeData[quad.BlockId];
             BlockFaceTextures faceTexture;
-
-            switch (faceIndex)
-            {
-                case 0:  faceTexture = blockTextures.Top;    break; // Top
-                case 1:  faceTexture = blockTextures.Bottom; break; // Bottom
-                default: faceTexture = blockTextures.Side;   break; // Sides
-            }
+            // choose correct face texture for axis/direction (top/bottom for Y, side for others)
+            if (quad.Axis == 0) // Y
+                faceTexture = (quad.Direction == 0) ? blockTextures.Top : blockTextures.Bottom;
+            else
+                faceTexture = blockTextures.Side;
 
             float tileSize = 1.0f / AtlasSizeInTiles;
-            float uvX = faceTexture.TileX * tileSize;
-            float uvY = faceTexture.TileY * tileSize;
 
-            // --- 2. Define the four corners of the tile in the atlas ---
-            var uv00 = new float2(uvX + tileSize, uvY);      // Bottom-Left UV
-            var uv10 = new float2(uvX, uvY);                 // Bottom-Right UV
-            var uv01 = new float2(uvX, uvY + tileSize);      // Top-Left UV
-            var uv11 = new float2(uvX + tileSize, uvY + tileSize); // Top-Right UV
-            
-            int x = position.x;
-            int y = position.y;
-            int z = position.z;
-            
-            if (faceIndex == 0) // Top Face
-            {
-                Vertices.Add(new float3(x,     y + 1, z    )); UVs.Add(uv00);
-                Vertices.Add(new float3(x,     y + 1, z + 1)); UVs.Add(uv10);
-                Vertices.Add(new float3(x + 1, y + 1, z + 1)); UVs.Add(uv01);
-                Vertices.Add(new float3(x + 1, y + 1, z    )); UVs.Add(uv11);
-            }
+            // Compute UV corners (we stretch texture across the greedy quad)
+            float2 uv00 = new float2(faceTexture.TileX * tileSize, faceTexture.TileY * tileSize);
+            float2 uv10 = new float2((faceTexture.TileX + quad.Width) * tileSize, faceTexture.TileY * tileSize);
+            float2 uv01 = new float2(faceTexture.TileX * tileSize, (faceTexture.TileY + quad.Height) * tileSize);
+            float2 uv11 = new float2((faceTexture.TileX + quad.Width) * tileSize, (faceTexture.TileY + quad.Height) * tileSize);
 
-            if (faceIndex == 1) // Bottom Face
-            {
-                Vertices.Add(new float3(x,     y, z    )); UVs.Add(uv00);
-                Vertices.Add(new float3(x + 1, y, z    )); UVs.Add(uv10);
-                Vertices.Add(new float3(x + 1, y, z + 1)); UVs.Add(uv01);
-                Vertices.Add(new float3(x,     y, z + 1)); UVs.Add(uv11);
-            }
+            // Compute vertex positions depending on axis and direction.
+            // We always emit vertices in the order that produces clockwise triangle winding (so normal faces outwards).
+            float3 v0, v1, v2, v3;
 
-            if (faceIndex == 2) // Left Face
+            // Coordinates in voxel-space:
+            // for the 2D plane coords (u = quad.X .. X+Width, v = quad.Y .. Y+Height)
+            // slice coordinate is quad.Slice (0..ChunkSize)
+            // Each vertex should be placed on integer voxel grid (0..ChunkSize)
+            if (quad.Axis == 0)
             {
-                Vertices.Add(new float3(x, y,     z    )); UVs.Add(uv00);
-                Vertices.Add(new float3(x, y,     z + 1)); UVs.Add(uv10);
-                Vertices.Add(new float3(x, y + 1, z + 1)); UVs.Add(uv01);
-                Vertices.Add(new float3(x, y + 1, z    )); UVs.Add(uv11);
-            }
+                // Plane is XZ at Y = slice
+                // For Y axis: u -> X, v -> Z
+                int y = quad.Slice;
+                if (quad.Direction == 0) // face normal +Y (solid below, face at y)
+                {
+                    // The face sits at y (the top of voxel at y-1). To keep normal +Y, we place quad at y.
+                    v0 = new float3(quad.X, y, quad.Y);                    // BL (x, y, z)
+                    v1 = new float3(quad.X + quad.Width, y, quad.Y);       // BR
+                    v2 = new float3(quad.X, y, quad.Y + quad.Height);      // TL
+                    v3 = new float3(quad.X + quad.Width, y, quad.Y + quad.Height); // TR
+                    // For +Y, clockwise winding when viewed from +Y: v0,v2,v1 and v1,v2,v3
+                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
+                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
 
-            if (faceIndex == 3) // Right Face
-            {
-                Vertices.Add(new float3(x + 1, y,     z + 1)); UVs.Add(uv00);
-                Vertices.Add(new float3(x + 1, y,     z    )); UVs.Add(uv10);
-                Vertices.Add(new float3(x + 1, y + 1, z    )); UVs.Add(uv01);
-                Vertices.Add(new float3(x + 1, y + 1, z + 1)); UVs.Add(uv11);
-            }
+                }
+                else // face normal -Y (solid above)
+                {
+                    // face at y (bottom of voxel at y)
+                    v0 = new float3(quad.X, y, quad.Y + quad.Height);      // BL (when viewed from -Y)
+                    v1 = new float3(quad.X + quad.Width, y, quad.Y + quad.Height);
+                    v2 = new float3(quad.X, y, quad.Y);
+                    v3 = new float3(quad.X + quad.Width, y, quad.Y);
+                    // For -Y (viewed from -Y), clockwise winding: v0,v2,v1 and v1,v2,v3
+                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
+                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
 
-            if (faceIndex == 4) // Front Face
-            {
-                Vertices.Add(new float3(x,     y,     z + 1)); UVs.Add(uv00);
-                Vertices.Add(new float3(x + 1, y,     z + 1)); UVs.Add(uv10);
-                Vertices.Add(new float3(x + 1, y + 1, z + 1)); UVs.Add(uv01);
-                Vertices.Add(new float3(x,     y + 1, z + 1)); UVs.Add(uv11);
+                }
             }
+            else if (quad.Axis == 1)
+            {
+                // Plane is YZ at X = slice
+                int x = quad.Slice;
+                if (quad.Direction == 0) // face normal +X (solid on -X side)
+                {
+                    // face at x
+                    v0 = new float3(x, quad.X, quad.Y + quad.Height);
+                    v1 = new float3(x, quad.X, quad.Y);
+                    v2 = new float3(x, quad.X + quad.Width, quad.Y + quad.Height);
+                    v3 = new float3(x, quad.X + quad.Width, quad.Y);
+                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
+                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
 
-            if (faceIndex == 5) // Back Face
-            {
-                Vertices.Add(new float3(x + 1, y,     z    )); UVs.Add(uv00);
-                Vertices.Add(new float3(x,     y,     z    )); UVs.Add(uv10);
-                Vertices.Add(new float3(x,     y + 1, z    )); UVs.Add(uv01);
-                Vertices.Add(new float3(x + 1, y + 1, z    )); UVs.Add(uv11);
-                
+                }
+                else // face normal -X
+                {
+                    v0 = new float3(x, quad.X, quad.Y);
+                    v1 = new float3(x, quad.X, quad.Y + quad.Height);
+                    v2 = new float3(x, quad.X + quad.Width, quad.Y);
+                    v3 = new float3(x, quad.X + quad.Width, quad.Y + quad.Height);
+                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
+                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
+
+                }
             }
-            AddTriangleIndices();
+            else // axis == 2
+            {
+                // Plane is XY at Z = slice
+                int z = quad.Slice;
+                if (quad.Direction == 0) // face normal +Z
+                {
+                    v0 = new float3(quad.X, quad.Y, z);
+                    v1 = new float3(quad.X + quad.Width, quad.Y, z);
+                    v2 = new float3(quad.X, quad.Y + quad.Height, z);
+                    v3 = new float3(quad.X + quad.Width, quad.Y + quad.Height, z);
+                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
+                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
+
+                }
+                else // face normal -Z
+                {
+                    v0 = new float3(quad.X + quad.Width, quad.Y, z);
+                    v1 = new float3(quad.X, quad.Y, z);
+                    v2 = new float3(quad.X + quad.Width, quad.Y + quad.Height, z);
+                    v3 = new float3(quad.X, quad.Y + quad.Height, z);
+                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
+                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
+
+                }
+            }
         }
+
         [BurstCompile]
-        private void AddTriangleIndices()
+        private void AddQuadWithWinding(float3 v0, float3 v1, float3 v2,
+            float3 v3, float2 uv00, float2 uv01, float2 uv10, float2 uv11,
+            bool flip)
         {
-            int vertCount = Vertices.Length;
+            int vertIndex = Vertices.Length;
+            Vertices.Add(v0);
+            Vertices.Add(v1);
+            Vertices.Add(v2);
+            Vertices.Add(v3);
 
-            // First triangle
-            Triangles.Add(vertCount - 4);
-            Triangles.Add(vertCount - 3);
-            Triangles.Add(vertCount - 2);
+            UVs.Add(uv00);
+            UVs.Add(uv10);
+            UVs.Add(uv01);
+            UVs.Add(uv11);
 
-            // Second triangle
-            Triangles.Add(vertCount - 4);
-            Triangles.Add(vertCount - 2);
-            Triangles.Add(vertCount - 1);
+            if (!flip)
+            {
+                // Original ordering (works for +Y/-Y in your code)
+                Triangles.Add(vertIndex + 0);
+                Triangles.Add(vertIndex + 2);
+                Triangles.Add(vertIndex + 1);
+
+                Triangles.Add(vertIndex + 1);
+                Triangles.Add(vertIndex + 2);
+                Triangles.Add(vertIndex + 3);
+            }
+            else
+            {
+                // Flipped winding — swap triangle orientation so normal faces the other way
+                Triangles.Add(vertIndex + 0);
+                Triangles.Add(vertIndex + 1);
+                Triangles.Add(vertIndex + 2);
+
+                Triangles.Add(vertIndex + 1);
+                Triangles.Add(vertIndex + 3);
+                Triangles.Add(vertIndex + 2);
+            }
         }
-        private int GetIndexFromCoords(int x, int y, int z)
+
+        // --- Helper functions for indexing and coordinate transformation ---        
+        private int GetIndexFromCoords(int x, int y, int z) => x + ChunkSize * (y + ChunkSize * z);
+
+        [BurstCompile]
+        private Voxel GetVoxel(int x, int y, int z)
         {
-            return x + ChunkSize * (y + ChunkSize * z);
+            // Convert padded -> local: padded coords are 0..ChunkSize+1, local coords are 0..ChunkSize-1
+            int lx = x - 1;
+            int ly = y - 1;
+            int lz = z - 1;
+
+            bool lxIn = lx >= 0 && lx < ChunkSize;
+            bool lyIn = ly >= 0 && ly < ChunkSize;
+            bool lzIn = lz >= 0 && lz < ChunkSize;
+
+            // Fully inside main chunk
+            if (lxIn && lyIn && lzIn)
+                return Voxels[GetIndexFromCoords(lx, ly, lz)];
+
+            // Only one-axis outside -> sample the corresponding neighbour if other coords are in-range
+            // Left
+            if (!lxIn && lyIn && lzIn)
+            {
+                if (lx == -1) // left neighbor's x = ChunkSize - 1
+                    return LeftVoxels.Length == 0 ? default : LeftVoxels[GetIndexFromCoords(ChunkSize - 1, ly, lz)];
+                if (lx == ChunkSize) // right neighbor (lx == ChunkSize means padded x was ChunkSize+1)
+                    return RightVoxels.Length == 0 ? default : RightVoxels[GetIndexFromCoords(0, ly, lz)];
+            }
+
+            // Down / Up
+            if (!lyIn && lxIn && lzIn)
+            {
+                if (ly == -1)
+                    return DownVoxels.Length == 0 ? default : DownVoxels[GetIndexFromCoords(lx, ChunkSize - 1, lz)];
+                if (ly == ChunkSize)
+                    return UpVoxels.Length == 0 ? default : UpVoxels[GetIndexFromCoords(lx, 0, lz)];
+            }
+
+            // Back / Forward (Z)
+            if (!lzIn && lxIn && lyIn)
+            {
+                if (lz == -1)
+                    return BackVoxels.Length == 0 ? default : BackVoxels[GetIndexFromCoords(lx, ly, ChunkSize - 1)];
+                if (lz == ChunkSize)
+                    return ForwardVoxels.Length == 0 ? default : ForwardVoxels[GetIndexFromCoords(lx, ly, 0)];
+            }
+
+            // If more than one axis is out of range (corner or edge that requires diagonal neighbor),
+            // we don't have diagonal neighbor chunks — treat as empty (air).
+            return default;
         }
     }
 }
-
-/*using Unity.Burst;
-using Unity.Collections;
-using Unity.Jobs;
-using Unity.Mathematics;
-
-namespace Voxels
-{
-    [BurstCompile]
-    public partial struct MesherJob : IJob
-    {
-        [ReadOnly] public int ChunkSize;
-        
-        [ReadOnly] public NativeArray<Voxel> Voxels;
-        
-        [ReadOnly] public NativeArray<Voxel> LeftVoxels;
-        [ReadOnly] public NativeArray<Voxel> RightVoxels;
-        [ReadOnly] public NativeArray<Voxel> ForwardVoxels;
-        [ReadOnly] public NativeArray<Voxel> BackVoxels;
-        [ReadOnly] public NativeArray<Voxel> UpVoxels;
-        [ReadOnly] public NativeArray<Voxel> DownVoxels;
-        
-        [ReadOnly] public NativeArray<BlockTextureData> BlockTypeData;
-        [ReadOnly] public int AtlasSizeInTiles;
-        
-        public NativeList<float3> Vertices;
-        public NativeList<int> Triangles;
-        public NativeList<float2> UVs;
-        
-        [BurstCompile]
-        public void Execute()
-        {
-            for (int x = 0; x < ChunkSize; x++)
-            {
-                for (int y = 0; y < ChunkSize; y++)
-                {
-                    for (int z = 0; z < ChunkSize; z++)
-                    {
-                        var index = GetIndexFromCoords(x, y, z);
-                        if ((BlockType)Voxels[index].GetBlockID() == BlockType.Air)
-                            continue;
-                        
-                        if(IsFaceVisible(x, y + 1, z)) AddFaceData(x, y, z, 0);
-                        if(IsFaceVisible(x, y - 1, z)) AddFaceData(x, y, z, 1);
-                        if(IsFaceVisible(x - 1, y, z)) AddFaceData(x, y, z, 2);
-                        if(IsFaceVisible(x + 1, y, z)) AddFaceData(x, y, z, 3);
-                        if(IsFaceVisible(x, y, z + 1)) AddFaceData(x, y, z, 4);
-                        if(IsFaceVisible(x, y, z - 1)) AddFaceData(x, y, z, 5);
-                    }
-                }
-            }
-        }
-        [BurstCompile]
-        private bool IsFaceVisible(int x, int y, int z)
-        {
-            if (x < 0)
-            {
-                if (LeftVoxels.Length == 0) return true;
-                return (BlockType)LeftVoxels[GetIndexFromCoords(ChunkSize - 1, y, z)].GetBlockID() == BlockType.Air;
-            }
-            if (x >= ChunkSize)
-            {
-                if (RightVoxels.Length == 0) return true;
-                return (BlockType)RightVoxels[GetIndexFromCoords(0, y, z)].GetBlockID() == BlockType.Air;
-            }
-            if (y < 0)
-            {
-                if (DownVoxels.Length == 0) return true;
-                return (BlockType)DownVoxels[GetIndexFromCoords(x, ChunkSize - 1, z)].GetBlockID() == BlockType.Air;
-            }
-            if (y >= ChunkSize)
-            {
-                if (UpVoxels.Length == 0) return true;
-                return (BlockType)UpVoxels[GetIndexFromCoords(x, 0, z)].GetBlockID() == BlockType.Air;
-            }
-            if (z < 0)
-            {
-                if (BackVoxels.Length == 0) return true;
-                return (BlockType)BackVoxels[GetIndexFromCoords(x, y, ChunkSize - 1)].GetBlockID() == BlockType.Air;
-            }
-            if (z >= ChunkSize)
-            {
-                if (ForwardVoxels.Length == 0) return true;
-                return (BlockType)ForwardVoxels[GetIndexFromCoords(x, y, 0)].GetBlockID() == BlockType.Air;
-            }
-            
-            return (BlockType)Voxels[GetIndexFromCoords(x, y, z)].GetBlockID() == BlockType.Air; // voxel is inside this chunk
-        }
-        [BurstCompile]
-        private void AddFaceData(int x, int y, int z, int faceIndex)
-        {
-            // Based on faceIndex, determine vertices and triangles
-            // Add vertices and triangles for the visible face
-            // Calculate and add corresponding UVs
-            
-            BlockTextureData blockTextures = BlockTypeData[blockID];
-            BlockFaceTextures faceTexture;
-
-            if (faceIndex == 0) // Top Face
-            {
-                Vertices.Add(new float3(x,     y + 1, z    ));
-                Vertices.Add(new float3(x,     y + 1, z + 1)); 
-                Vertices.Add(new float3(x + 1, y + 1, z + 1));
-                Vertices.Add(new float3(x + 1, y + 1, z    )); 
-            }
-
-            if (faceIndex == 1) // Bottom Face
-            {
-                Vertices.Add(new float3(x,     y, z    ));
-                Vertices.Add(new float3(x + 1, y, z    )); 
-                Vertices.Add(new float3(x + 1, y, z + 1));
-                Vertices.Add(new float3(x,     y, z + 1)); 
-            }
-
-            if (faceIndex == 2) // Left Face
-            {
-                Vertices.Add(new float3(x, y,     z    ));
-                Vertices.Add(new float3(x, y,     z + 1));
-                Vertices.Add(new float3(x, y + 1, z + 1));
-                Vertices.Add(new float3(x, y + 1, z    ));
-            }
-
-            if (faceIndex == 3) // Right Face
-            {
-                Vertices.Add(new float3(x + 1, y,     z + 1));
-                Vertices.Add(new float3(x + 1, y,     z    ));
-                Vertices.Add(new float3(x + 1, y + 1, z    ));
-                Vertices.Add(new float3(x + 1, y + 1, z + 1));
-            }
-
-            if (faceIndex == 4) // Front Face
-            {
-                Vertices.Add(new float3(x,     y,     z + 1));
-                Vertices.Add(new float3(x + 1, y,     z + 1));
-                Vertices.Add(new float3(x + 1, y + 1, z + 1));
-                Vertices.Add(new float3(x,     y + 1, z + 1));
-            }
-
-            if (faceIndex == 5) // Back Face
-            {
-                Vertices.Add(new float3(x + 1, y,     z    ));
-                Vertices.Add(new float3(x,     y,     z    ));
-                Vertices.Add(new float3(x,     y + 1, z    ));
-                Vertices.Add(new float3(x + 1, y + 1, z    ));
-                
-            }
-            AddTriangleIndices();
-        }
-        [BurstCompile]
-        private void AddTriangleIndices()
-        {
-            int vertCount = Vertices.Length;
-
-            // First triangle
-            Triangles.Add(vertCount - 4);
-            Triangles.Add(vertCount - 3);
-            Triangles.Add(vertCount - 2);
-
-            // Second triangle
-            Triangles.Add(vertCount - 4);
-            Triangles.Add(vertCount - 2);
-            Triangles.Add(vertCount - 1);
-        }
-
-        [BurstCompile]
-        private int GetIndexFromCoords(int x, int y, int z)
-        {
-            return x + ChunkSize * (y + ChunkSize * z);
-        }
-    }
-}*/

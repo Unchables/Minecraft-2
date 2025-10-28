@@ -32,9 +32,6 @@ namespace Voxels
                 {
                     Chunks = new NativeHashMap<int3, ChunkVoxels>((int)math.pow(authoring.chunkLoadRadius * 1.5, 3), Allocator.Persistent)
                 });
-
-                AddComponent(worldEntity, new FinishedInitialGeneration());
-                SetComponentEnabled<FinishedInitialGeneration>(worldEntity, false);
             }
         }
     }
