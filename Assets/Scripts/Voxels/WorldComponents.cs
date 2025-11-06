@@ -19,10 +19,16 @@ namespace Voxels
     public struct AllChunks : IComponentData
     {
         public NativeHashMap<int3, ChunkVoxels> Chunks;
+        public NativeHashMap<int3, Entity> Entites;
     }
     
     public struct TerrainGenerationData : IComponentData
     {
         public TerrainConfig TerrainConfig;
+    }
+    public struct WaterSimulationTimer : IComponentData
+    {
+        // The time the last simulation tick occurred.
+        public double LastTickTime;
     }
 }

@@ -19,7 +19,8 @@ namespace Voxels
         // --- Output Data ---
         public NativeList<float3> Vertices;
         public NativeList<int> Triangles;
-        public NativeList<float2> UVs;
+        public NativeList<float2> UVs0;
+        public NativeList<float2> UVs1;
 
         private struct GreedyQuad
         {
@@ -170,157 +171,129 @@ namespace Voxels
             bId = bSolid ? bvox.GetBlockID() : (ushort)0;
         }
 
-        // Emit vertices, UVs and triangles for the greedy quad.
-        // The mapping places the quad on world-local voxel coordinates (0..ChunkSize) so mesh can be positioned at chunk origin.
         [BurstCompile]
         private void AppendGreedyQuad(GreedyQuad quad)
         {
-            // Texture/UV
+            // --- 1. Texture/UV Calculation (MODIFIED) ---
             BlockTextureData blockTextures = BlockTypeData[quad.BlockId];
             BlockFaceTextures faceTexture;
-            // choose correct face texture for axis/direction (top/bottom for Y, side for others)
-            if (quad.Axis == 0) // Y
-                faceTexture = (quad.Direction == 0) ? blockTextures.Top : blockTextures.Bottom;
-            else
-                faceTexture = blockTextures.Side;
+
+            if (quad.Axis == 0) faceTexture = (quad.Direction == 0) ? blockTextures.Top : blockTextures.Bottom;
+            else faceTexture = blockTextures.Side;
 
             float tileSize = 1.0f / AtlasSizeInTiles;
 
-            // Compute UV corners (we stretch texture across the greedy quad)
-            float2 uv00 = new float2(faceTexture.TileX * tileSize, faceTexture.TileY * tileSize);
-            float2 uv10 = new float2((faceTexture.TileX + quad.Width) * tileSize, faceTexture.TileY * tileSize);
-            float2 uv01 = new float2(faceTexture.TileX * tileSize, (faceTexture.TileY + quad.Height) * tileSize);
-            float2 uv11 = new float2((faceTexture.TileX + quad.Width) * tileSize, (faceTexture.TileY + quad.Height) * tileSize);
+            // UV Channel 1: The base offset of the tile in the atlas.
+            // This is the SAME for all 4 vertices of the quad.
+            float2 baseUv = new float2(faceTexture.TileX * tileSize, faceTexture.TileY * tileSize);
 
-            // Compute vertex positions depending on axis and direction.
-            // We always emit vertices in the order that produces clockwise triangle winding (so normal faces outwards).
+            // UV Channel 0: The tiling coordinates.
+            // These make the texture repeat across the quad's surface.
+            var uv0_bl = new float2(0, 0);
+            var uv0_br = new float2(quad.Width, 0);
+            var uv0_tl = new float2(0, quad.Height);
+            var uv0_tr = new float2(quad.Width, quad.Height);
+            
+            // --- 2. Vertex Position and Winding Order ---
+            int vertIndex = Vertices.Length;
             float3 v0, v1, v2, v3;
 
-            // Coordinates in voxel-space:
-            // for the 2D plane coords (u = quad.X .. X+Width, v = quad.Y .. Y+Height)
-            // slice coordinate is quad.Slice (0..ChunkSize)
-            // Each vertex should be placed on integer voxel grid (0..ChunkSize)
-            if (quad.Axis == 0)
+            switch (quad.Axis)
             {
-                // Plane is XZ at Y = slice
-                // For Y axis: u -> X, v -> Z
-                int y = quad.Slice;
-                if (quad.Direction == 0) // face normal +Y (solid below, face at y)
-                {
-                    // The face sits at y (the top of voxel at y-1). To keep normal +Y, we place quad at y.
-                    v0 = new float3(quad.X, y, quad.Y);                    // BL (x, y, z)
-                    v1 = new float3(quad.X + quad.Width, y, quad.Y);       // BR
-                    v2 = new float3(quad.X, y, quad.Y + quad.Height);      // TL
-                    v3 = new float3(quad.X + quad.Width, y, quad.Y + quad.Height); // TR
-                    // For +Y, clockwise winding when viewed from +Y: v0,v2,v1 and v1,v2,v3
-                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
-                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
+                case 0: // Y-Axis
+                    v0 = new float3(quad.X,             quad.Slice, quad.Y);
+                    v1 = new float3(quad.X + quad.Width, quad.Slice, quad.Y);
+                    v2 = new float3(quad.X,             quad.Slice, quad.Y + quad.Height);
+                    v3 = new float3(quad.X + quad.Width, quad.Slice, quad.Y + quad.Height);
+                    
+                    if (quad.Direction == 0) // +Y Normal (Top face)
+                        AddQuad(vertIndex, v0, v2, v1, v3, uv0_bl, uv0_tl, uv0_br, uv0_tr, baseUv);
+                    else // -Y Normal (Bottom face)
+                        AddQuad(vertIndex, v0, v1, v2, v3, uv0_bl, uv0_br, uv0_tl, uv0_tr, baseUv);
+                    break;
 
-                }
-                else // face normal -Y (solid above)
+                case 1: // X-Axis
                 {
-                    // face at y (bottom of voxel at y)
-                    v0 = new float3(quad.X, y, quad.Y + quad.Height);      // BL (when viewed from -Y)
-                    v1 = new float3(quad.X + quad.Width, y, quad.Y + quad.Height);
-                    v2 = new float3(quad.X, y, quad.Y);
-                    v3 = new float3(quad.X + quad.Width, y, quad.Y);
-                    // For -Y (viewed from -Y), clockwise winding: v0,v2,v1 and v1,v2,v3
-                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
-                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
+                    // Define the four 3D vertex positions of the quad on the YZ-plane
+                    float3 v_bottomLeft  = new float3(quad.Slice, quad.X,             quad.Y);
+                    float3 v_bottomRight = new float3(quad.Slice, quad.X,             quad.Y + quad.Height);
+                    float3 v_topLeft     = new float3(quad.Slice, quad.X + quad.Width, quad.Y);
+                    float3 v_topRight    = new float3(quad.Slice, quad.X + quad.Width, quad.Y + quad.Height);
+                    
+                    // Define the corresponding four 2D UV coordinates
+                    // The texture's U (width) maps to the quad's Z-extent (quad.Height)
+                    // The texture's V (height) maps to the quad's Y-extent (quad.Width)
+                    float2 uv_bottomLeft  = new float2(0, 0);
+                    float2 uv_bottomRight = new float2(quad.Height, 0);
+                    float2 uv_topLeft     = new float2(0, quad.Width);
+                    float2 uv_topRight    = new float2(quad.Height, quad.Width);
 
+                    if (quad.Direction == 0) // +X Normal (Right face)
+                    {
+                        // Winding order: BL, TL, BR, TR
+                        AddQuad(vertIndex, 
+                            v_bottomLeft, v_topLeft, v_bottomRight, v_topRight,
+                            uv_bottomLeft, uv_topLeft, uv_bottomRight, uv_topRight, 
+                            baseUv);
+                    }
+                    else // -X Normal (Left face)
+                    {
+                        // Winding order: BL, BR, TL, TR
+                        AddQuad(vertIndex, 
+                            v_bottomLeft, v_bottomRight, v_topLeft, v_topRight,
+                            uv_bottomRight, uv_bottomLeft, uv_topRight, uv_topLeft, 
+                            baseUv);
+                    }
+                    break;
                 }
-            }
-            else if (quad.Axis == 1)
-            {
-                // Plane is YZ at X = slice
-                int x = quad.Slice;
-                if (quad.Direction == 0) // face normal +X (solid on -X side)
-                {
-                    // face at x
-                    v0 = new float3(x, quad.X, quad.Y + quad.Height);
-                    v1 = new float3(x, quad.X, quad.Y);
-                    v2 = new float3(x, quad.X + quad.Width, quad.Y + quad.Height);
-                    v3 = new float3(x, quad.X + quad.Width, quad.Y);
-                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
-                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
 
-                }
-                else // face normal -X
-                {
-                    v0 = new float3(x, quad.X, quad.Y);
-                    v1 = new float3(x, quad.X, quad.Y + quad.Height);
-                    v2 = new float3(x, quad.X + quad.Width, quad.Y);
-                    v3 = new float3(x, quad.X + quad.Width, quad.Y + quad.Height);
-                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
-                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
-
-                }
-            }
-            else // axis == 2
-            {
-                // Plane is XY at Z = slice
-                int z = quad.Slice;
-                if (quad.Direction == 0) // face normal +Z
-                {
-                    v0 = new float3(quad.X, quad.Y, z);
-                    v1 = new float3(quad.X + quad.Width, quad.Y, z);
-                    v2 = new float3(quad.X, quad.Y + quad.Height, z);
-                    v3 = new float3(quad.X + quad.Width, quad.Y + quad.Height, z);
-                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
-                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
-
-                }
-                else // face normal -Z
-                {
-                    v0 = new float3(quad.X + quad.Width, quad.Y, z);
-                    v1 = new float3(quad.X, quad.Y, z);
-                    v2 = new float3(quad.X + quad.Width, quad.Y + quad.Height, z);
-                    v3 = new float3(quad.X, quad.Y + quad.Height, z);
-                    bool flip = quad.Axis != 0; // flip for X and Z planes (axis 1 and 2)
-                    AddQuadWithWinding(v0, v1, v2, v3, uv00, uv01, uv10, uv11, flip);
-
-                }
+                case 2: // Z-Axis
+                    v0 = new float3(quad.X,             quad.Y,             quad.Slice);
+                    v1 = new float3(quad.X + quad.Width, quad.Y,             quad.Slice);
+                    v2 = new float3(quad.X,             quad.Y + quad.Height, quad.Slice);
+                    v3 = new float3(quad.X + quad.Width, quad.Y + quad.Height, quad.Slice);
+                    
+                    if (quad.Direction == 0) // +Z Normal (Forward face)
+                        AddQuad(vertIndex, v0, v1, v2, v3, uv0_br, uv0_bl, uv0_tr, uv0_tl, baseUv);
+                    else // -Z Normal (Back face)
+                        AddQuad(vertIndex, v0, v2, v1, v3, uv0_bl, uv0_tl, uv0_br, uv0_tr, baseUv);
+                    break;
             }
         }
 
+        // MODIFIED: This function now accepts the tiling UVs and the base UV separately
+        // and populates both UVs0 and UVs1 lists.
         [BurstCompile]
-        private void AddQuadWithWinding(float3 v0, float3 v1, float3 v2,
-            float3 v3, float2 uv00, float2 uv01, float2 uv10, float2 uv11,
-            bool flip)
+        private void AddQuad(int vertIndex, 
+            float3 vA, float3 vB, float3 vC, float3 vD,
+            float2 uv0_A, float2 uv0_B, float2 uv0_C, float2 uv0_D, float2 uv1_base)
         {
-            int vertIndex = Vertices.Length;
-            Vertices.Add(v0);
-            Vertices.Add(v1);
-            Vertices.Add(v2);
-            Vertices.Add(v3);
+            Vertices.Add(vA);
+            Vertices.Add(vB);
+            Vertices.Add(vC);
+            Vertices.Add(vD);
 
-            UVs.Add(uv00);
-            UVs.Add(uv10);
-            UVs.Add(uv01);
-            UVs.Add(uv11);
+            // Add the corresponding tiling UVs to the first channel
+            UVs0.Add(uv0_A);
+            UVs0.Add(uv0_B);
+            UVs0.Add(uv0_C);
+            UVs0.Add(uv0_D);
 
-            if (!flip)
-            {
-                // Original ordering (works for +Y/-Y in your code)
-                Triangles.Add(vertIndex + 0);
-                Triangles.Add(vertIndex + 2);
-                Triangles.Add(vertIndex + 1);
+            // Add the same base tile offset to all four vertices in the second channel
+            UVs1.Add(uv1_base);
+            UVs1.Add(uv1_base);
+            UVs1.Add(uv1_base);
+            UVs1.Add(uv1_base);
 
-                Triangles.Add(vertIndex + 1);
-                Triangles.Add(vertIndex + 2);
-                Triangles.Add(vertIndex + 3);
-            }
-            else
-            {
-                // Flipped winding — swap triangle orientation so normal faces the other way
-                Triangles.Add(vertIndex + 0);
-                Triangles.Add(vertIndex + 1);
-                Triangles.Add(vertIndex + 2);
+            // First triangle
+            Triangles.Add(vertIndex + 0);
+            Triangles.Add(vertIndex + 1); 
+            Triangles.Add(vertIndex + 2); 
 
-                Triangles.Add(vertIndex + 1);
-                Triangles.Add(vertIndex + 3);
-                Triangles.Add(vertIndex + 2);
-            }
+            // Second triangle
+            Triangles.Add(vertIndex + 1);
+            Triangles.Add(vertIndex + 3); 
+            Triangles.Add(vertIndex + 2);
         }
 
         // --- Helper functions for indexing and coordinate transformation ---        

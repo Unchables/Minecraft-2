@@ -15,7 +15,8 @@ namespace Voxels
     }
     public struct MeshJobHandle : IComponentData
     {
-        public JobHandle Value;
+        public JobHandle TerrainMeshHandle;
+        public JobHandle WaterMeshHandle;
     }
     
     // Component to store the final mesh data.
@@ -24,7 +25,8 @@ namespace Voxels
     {
         public NativeList<float3> Vertices;
         public NativeList<int> Triangles;
-        public NativeList<float2> UVs;
+        public NativeList<float2> UVs0;
+        public NativeList<float2> UVs1;
     }
     
     public struct ChunkHasVoxelData : IComponentData, IEnableableComponent  { }
@@ -32,4 +34,12 @@ namespace Voxels
     public struct IsChunkMeshGenerating : IComponentData, IEnableableComponent  { }
     public struct ChunkHasMesh : IComponentData, IEnableableComponent  { }
     public struct ChunkAddedToAllChunks : IComponentData, IEnableableComponent  { }
+    public struct ChunkDirty : IComponentData, IEnableableComponent { }
+
+    readonly partial struct MeshRenderData : IAspect
+    {
+        public readonly RefRW<ChunkMeshRenderData> ChunkMeshRenderData;
+        public readonly RefRW<ChunkWaterMeshRenderData> ChunkWaterMeshRenderData;
+    }
+
 }

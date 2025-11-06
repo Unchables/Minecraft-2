@@ -1,70 +1,84 @@
+// ---- FILE: Voxel.cs ----
+
+using UnityEngine; // Needed for Color32
+
 namespace Voxels
 {
     /// <summary>
-    /// Defines the data for a single voxel within a chunk's main data array.
-    /// This struct is guaranteed to be an "unmanaged" type, containing only a single ushort.
-    /// Its total size is 2 bytes.
+    /// Defines the data for a single voxel, packed into a single 32-bit uint
+    /// to provide a rich feature set while maintaining performance.
+    /// Total size is 4 bytes.
     /// </summary>
     public struct Voxel
     {
         /// <summary>
-        /// The single, raw data field for this voxel. It contains all data, packed into 16 bits.
-        /// This is the ONLY field in the struct to ensure it remains unmanaged.
+        /// The single, raw data field for this voxel. Contains all data packed into 32 bits.
         /// </summary>
-        public ushort Data;
+        public uint Data;
 
-        // We can define methods inside the struct to safely get and set the packed data
-        // without affecting the struct's unmanaged status.
+        // --- Constants for Bit Masking & Shifting ---
+        private const int ID_BITS = 12;
+        private const int WATER_BITS = 3;
+        private const int ROTATION_BITS = 4;
+        private const int TINT_BITS = 6;
+        private const int STATE_BITS = 7;
 
-        /// <summary>
-        /// Extracts the Block ID from the packed data.
-        /// </summary>
-        /// <returns>The 12-bit Block ID.</returns>
-        public ushort GetBlockID()
-        {
-            // Shifts the 16 bits to the right by 4, removing the rotation data
-            // and leaving the 12 bits of the ID.
-            return (ushort)(Data >> 4);
-        }
+        private const int WATER_SHIFT = ID_BITS;
+        private const int ROTATION_SHIFT = ID_BITS + WATER_BITS;
+        private const int TINT_SHIFT = ID_BITS + WATER_BITS + ROTATION_BITS;
+        private const int STATE_SHIFT = ID_BITS + WATER_BITS + ROTATION_BITS + TINT_BITS;
 
-        /// <summary>
-        /// Extracts the Rotation value from the packed data.
-        /// </summary>
-        /// <returns>The 4-bit rotation value.</returns>
-        public byte GetRotation()
-        {
-            // Performs a bitwise AND with 15 (binary 0000 0000 0000 1111)
-            // to isolate the lowest 4 bits.
-            return (byte)(Data & 0x0F);
-        }
+        private const uint ID_MASK = (1u << ID_BITS) - 1;
+        private const uint WATER_MASK = ((1u << WATER_BITS) - 1) << WATER_SHIFT;
+        private const uint ROTATION_MASK = ((1u << ROTATION_BITS) - 1) << ROTATION_SHIFT;
+        private const uint TINT_MASK = ((1u << TINT_BITS) - 1) << TINT_SHIFT;
+        private const uint STATE_MASK = ((1u << STATE_BITS) - 1) << STATE_SHIFT;
 
-        /// <summary>
-        /// Sets the Block ID, preserving the existing Rotation value.
-        /// </summary>
-        /// <param name="blockID">The new 12-bit Block ID.</param>
-        public void SetBlockID(ushort blockID)
-        {
-            // 1. (Data & 0x0F): Gets the current rotation value.
-            // 2. (blockID << 4): Moves the new ID into the correct bit position.
-            // 3. | (OR): Combines the new ID with the old rotation.
-            Data = (ushort)((blockID << 4) | (Data & 0x0F));
-        }
+        // --- Getters & Setters ---
+
+        public ushort GetBlockID() => (ushort)(Data & ID_MASK);
+        public void SetBlockID(ushort id) => Data = (Data & ~ID_MASK) | id;
+
+        public byte GetWaterLevel() => (byte)((Data & WATER_MASK) >> WATER_SHIFT);
+        public void SetWaterLevel(byte level) => Data = (Data & ~WATER_MASK) | ((uint)level << WATER_SHIFT);
+
+        public byte GetRotation() => (byte)((Data & ROTATION_MASK) >> ROTATION_SHIFT);
+        public void SetRotation(byte rot) => Data = (Data & ~ROTATION_MASK) | ((uint)rot << ROTATION_SHIFT);
+
+        public byte GetStateFlags() => (byte)((Data & STATE_MASK) >> STATE_SHIFT);
+        public void SetStateFlags(byte flags) => Data = (Data & ~STATE_MASK) | ((uint)flags << STATE_SHIFT);
 
         /// <summary>
-        /// Sets the Rotation, preserving the existing Block ID value.
+        /// Gets the packed 6-bit tint value (R2G2B2).
         /// </summary>
-        /// <param name="rotation">The new 4-bit rotation value.</param>
-        public void SetRotation(byte rotation)
+        public byte GetTintColorPacked() => (byte)((Data & TINT_MASK) >> TINT_SHIFT);
+        
+        /// <summary>
+        /// Sets the packed 6-bit tint value (R2G2B2).
+        /// </summary>
+        public void SetTintColorPacked(byte tint) => Data = (Data & ~TINT_MASK) | ((uint)tint << TINT_SHIFT);
+
+        /// <summary>
+        /// Decodes the 6-bit R2G2B2 tint into a standard Color32 object.
+        /// This is useful for shaders or debugging.
+        /// </summary>
+        public Color32 GetTintColor()
         {
-            // 1. (Data & 0xFFF0): Gets the current Block ID (masking out the old rotation).
-            // 2. (rotation & 0x0F): Ensures the new rotation is only 4 bits.
-            // 3. | (OR): Combines the old ID with the new rotation.
-            Data = (ushort)((Data & 0xFFF0) | (rotation & 0x0F));
+            byte packed = GetTintColorPacked();
+            // Extract 2 bits for each channel
+            byte r = (byte)((packed >> 4) & 0x03); // Bits 5,4
+            byte g = (byte)((packed >> 2) & 0x03); // Bits 3,2
+            byte b = (byte)(packed & 0x03);        // Bits 1,0
+
+            // Scale 2-bit values (0-3) to full 8-bit range (0-255)
+            // 0->0, 1->85, 2->170, 3->255
+            return new Color32((byte)(r * 85), (byte)(g * 85), (byte)(b * 85), 255);
         }
 
         public bool IsSolid()
         {
-            return GetBlockID() != AirID.Value;
+            var id = GetBlockID();
+            return id != AirID.Value;
         }
     }
 }

@@ -3,87 +3,85 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Transforms;
 
 namespace Voxels
 {
     [BurstCompile]
-    [UpdateInGroup(typeof(SimulationSystemGroup))] // Run in the presentation group, after simulation
+    [UpdateInGroup(typeof(SimulationSystemGroup))]
     [UpdateAfter(typeof(TerrainGeneratorSystem))]
+    [UpdateAfter(typeof(WaterSimulationSystem))]
     public partial struct ChunkMeshingSystem : ISystem
     {
+        // A list to track temporary NativeArrays for neighbor voxels that need to be disposed of the following frame.
+        private NativeList<NativeArray<Voxel>> tempArraysToDispose;
+
         [BurstCompile]
         public void OnCreate(ref SystemState state)
         {
             state.RequireForUpdate<AllChunks>();
             state.RequireForUpdate<WorldSettings>();
-            state.RequireForUpdate<VoxelRenderResources>(); // Needs the atlas data
+            state.RequireForUpdate<VoxelRenderResources>();
+
+            tempArraysToDispose = new NativeList<NativeArray<Voxel>>(128, Allocator.Persistent);
         }
 
         [BurstCompile]
-        public void OnDestroy(ref SystemState state) { }
+        public void OnDestroy(ref SystemState state)
+        {
+            // Ensure all tracked temporary arrays are disposed of when the system is destroyed.
+            foreach (var array in tempArraysToDispose)
+            {
+                if (array.IsCreated) array.Dispose();
+            }
+            if (tempArraysToDispose.IsCreated) tempArraysToDispose.Dispose();
+        }
 
         [BurstCompile]
         public void OnUpdate(ref SystemState state)
         {
-            var allChunks = SystemAPI.GetSingleton<AllChunks>();
+            // Dispose of temporary arrays that were created in the previous frame.
+            foreach (var array in tempArraysToDispose)
+            {
+                if (array.IsCreated) array.Dispose();
+            }
+            tempArraysToDispose.Clear();
 
-            // Get the singleton that holds our atlas and texture data
+            var allChunks = SystemAPI.GetSingleton<AllChunks>();
             var renderResources = SystemAPI.GetSingleton<VoxelRenderResources>();
 
-            var jobHandles = new NativeList<JobHandle>(Allocator.Temp);
-            
-            // Query for all chunks that have voxel data but do not yet have mesh data.
-            foreach (var (chunkVoxels, chunkPosition, chunkMeshRenderData, isChunkMeshGenerating, chunkHasVoxelData,
-                         meshJobHandle, generateChunkMesh)
-                     in SystemAPI
-                         .Query<RefRO<ChunkVoxels>, RefRO<ChunkPosition>, RefRW<ChunkMeshRenderData>,
-                             EnabledRefRW<IsChunkMeshGenerating>, EnabledRefRO<ChunkHasVoxelData>,
-                             RefRW<MeshJobHandle>, EnabledRefRO<GenerateChunkMesh>>()
-                         .WithDisabled<IsChunkMeshGenerating>())
+            // Process all chunks that are marked as dirty and are not currently being meshed.
+            foreach (var (chunkVoxels, chunkPosition, chunkMeshRenderData, isChunkMeshGenerating, chunkDirty, meshJobHandle, isWaterMeshGenerating)
+                     in SystemAPI.Query<RefRO<ChunkVoxels>, RefRO<ChunkPosition>, MeshRenderData, EnabledRefRW<IsChunkMeshGenerating>, EnabledRefRW<ChunkDirty>, RefRW<MeshJobHandle>, EnabledRefRW<IsChunkWaterMeshGenerating>>()
+                         .WithAll<GenerateChunkMesh, ChunkDirty, ChunkHasVoxelData>()
+                         .WithDisabled<IsChunkMeshGenerating, IsChunkWaterMeshGenerating>())
             {
-                // --- 2. Create and Allocate Mesh Data Lists ---
-                int chunkVolume = 32 * 32 * 32; // Assuming ChunkSize of 32
-                int maxVertexCapacity = (chunkVolume / 2) * 12; // Safer capacity
-                int maxTriangleCapacity = (chunkVolume / 2) * 18;
+                chunkDirty.ValueRW = false; // Mark the chunk as no longer dirty.
+
+                // Pre-allocate mesh data with a sensible capacity.
+                const int chunkVolume = 32 * 32 * 32;
+                const int maxVertexCapacity = (chunkVolume / 2) * 12;
+                const int maxTriangleCapacity = (chunkVolume / 2) * 18;
 
                 var vertices = new NativeList<float3>(maxVertexCapacity, Allocator.Persistent);
                 var triangles = new NativeList<int>(maxTriangleCapacity, Allocator.Persistent);
-                var uvs = new NativeList<float2>(maxVertexCapacity, Allocator.Persistent);
-                
-                var vertexCounter = new NativeArray<int>(1, Allocator.TempJob);
-                vertexCounter[0] = 0; // CRITICAL: Initialize the counter to zero
-                
-                NativeArray<Voxel> leftVoxels = 
-                    allChunks.Chunks.TryGetValue(chunkPosition.ValueRO.Value + new int3(-1, 0, 0), out ChunkVoxels lVoxels)
-                        ? lVoxels.Voxels : new NativeArray<Voxel>(0, Allocator.TempJob);
-            
-                NativeArray<Voxel> rightVoxels = 
-                    allChunks.Chunks.TryGetValue(chunkPosition.ValueRO.Value + new int3(1, 0, 0), out ChunkVoxels rVoxels)
-                        ? rVoxels.Voxels : new NativeArray<Voxel>(0, Allocator.TempJob);
-            
-                NativeArray<Voxel> forwardVoxels = 
-                    allChunks.Chunks.TryGetValue(chunkPosition.ValueRO.Value + new int3(0, 0, 1), out ChunkVoxels fVoxels)
-                        ? fVoxels.Voxels : new NativeArray<Voxel>(0, Allocator.TempJob);
-            
-                NativeArray<Voxel> backVoxels = 
-                    allChunks.Chunks.TryGetValue(chunkPosition.ValueRO.Value + new int3(0, 0, -1), out ChunkVoxels bVoxels)
-                        ? bVoxels.Voxels : new NativeArray<Voxel>(0, Allocator.TempJob);
-            
-                NativeArray<Voxel> upVoxels = 
-                    allChunks.Chunks.TryGetValue(chunkPosition.ValueRO.Value + new int3(0, 1, 0), out ChunkVoxels uVoxels)
-                        ? uVoxels.Voxels : new NativeArray<Voxel>(0, Allocator.TempJob);
-            
-                NativeArray<Voxel> downVoxels = 
-                    allChunks.Chunks.TryGetValue(chunkPosition.ValueRO.Value + new int3(0, -1, 0), out ChunkVoxels dVoxels)
-                        ? dVoxels.Voxels : new NativeArray<Voxel>(0, Allocator.TempJob);
+                var uvs0 = new NativeList<float2>(maxVertexCapacity, Allocator.Persistent);
+                var uvs1 = new NativeList<float2>(maxVertexCapacity, Allocator.Persistent);
 
-                // --- 3. Populate and Schedule the MesherJob ---
+                // Get voxel data from neighboring chunks for seamless mesh generation.
+                var leftVoxels = GetNeighborVoxels(allChunks, chunkPosition.ValueRO.Value + new int3(-1, 0, 0));
+                var rightVoxels = GetNeighborVoxels(allChunks, chunkPosition.ValueRO.Value + new int3(1, 0, 0));
+                var forwardVoxels = GetNeighborVoxels(allChunks, chunkPosition.ValueRO.Value + new int3(0, 0, 1));
+                var backVoxels = GetNeighborVoxels(allChunks, chunkPosition.ValueRO.Value + new int3(0, 0, -1));
+                var upVoxels = GetNeighborVoxels(allChunks, chunkPosition.ValueRO.Value + new int3(0, 1, 0));
+                var downVoxels = GetNeighborVoxels(allChunks, chunkPosition.ValueRO.Value + new int3(0, -1, 0));
+
+                // --- Schedule Terrain Meshing Job ---
                 var mesherJob = new MesherJob
                 {
-                    ChunkSize = 32, // Pass this in from WorldSettings if dynamic
+                    ChunkSize = 32,
                     AtlasSizeInTiles = renderResources.AtlasSizeInTiles,
                     BlockTypeData = renderResources.BlockTypeData,
-                
                     Voxels = chunkVoxels.ValueRO.Voxels,
                     LeftVoxels = leftVoxels,
                     RightVoxels = rightVoxels,
@@ -91,28 +89,72 @@ namespace Voxels
                     UpVoxels = upVoxels,
                     BackVoxels = backVoxels,
                     ForwardVoxels = forwardVoxels,
-
                     Vertices = vertices,
                     Triangles = triangles,
-                    UVs = uvs
+                    UVs0 = uvs0,
+                    UVs1 = uvs1
                 };
-                
-                // Schedule the MesherJob as an IJob
+
                 var mesherHandle = mesherJob.Schedule(state.Dependency);
-                
-                chunkMeshRenderData.ValueRW.Vertices = vertices;
-                chunkMeshRenderData.ValueRW.Triangles = triangles;
-                chunkMeshRenderData.ValueRW.UVs = uvs;
-                
+
+                chunkMeshRenderData.ChunkMeshRenderData.ValueRW.Vertices = vertices;
+                chunkMeshRenderData.ChunkMeshRenderData.ValueRW.Triangles = triangles;
+                chunkMeshRenderData.ChunkMeshRenderData.ValueRW.UVs0 = uvs0;
+                chunkMeshRenderData.ChunkMeshRenderData.ValueRW.UVs1 = uvs1;
                 isChunkMeshGenerating.ValueRW = true;
+
+                // --- Schedule Water Meshing Job ---
+                var verticesWater = new NativeList<float3>(maxVertexCapacity, Allocator.Persistent);
+                var trianglesWater = new NativeList<int>(maxTriangleCapacity, Allocator.Persistent);
+                var uvsWater = new NativeList<float2>(maxVertexCapacity, Allocator.Persistent);
+
+                var waterMesherJob = new WaterMesherJob
+                {
+                    ChunkSize = 32,
+                    Voxels = chunkVoxels.ValueRO.Voxels,
+                    LeftVoxels = leftVoxels,
+                    RightVoxels = rightVoxels,
+                    DownVoxels = downVoxels,
+                    UpVoxels = upVoxels,
+                    BackVoxels = backVoxels,
+                    ForwardVoxels = forwardVoxels,
+                    Vertices = verticesWater,
+                    Triangles = trianglesWater,
+                    UVs = uvsWater
+                };
+
+                var waterMesherHandle = waterMesherJob.Schedule(state.Dependency);
+
+                chunkMeshRenderData.ChunkWaterMeshRenderData.ValueRW.Vertices = verticesWater;
+                chunkMeshRenderData.ChunkWaterMeshRenderData.ValueRW.Triangles = trianglesWater;
+                chunkMeshRenderData.ChunkWaterMeshRenderData.ValueRW.UVs = uvsWater;
+                isWaterMeshGenerating.ValueRW = true;
+
+                // Store both job handles and combine them with the system's dependency.
+                meshJobHandle.ValueRW.TerrainMeshHandle = mesherHandle;
+                meshJobHandle.ValueRW.WaterMeshHandle = waterMesherHandle;
                 
-                meshJobHandle.ValueRW.Value = mesherHandle;
-                jobHandles.Add(mesherHandle);
-                
-                vertexCounter.Dispose(mesherHandle);
+                state.Dependency = JobHandle.CombineDependencies(mesherHandle, waterMesherHandle);
             }
-            
-            state.Dependency = JobHandle.CombineDependencies(jobHandles.AsArray());
+        }
+
+        /// <summary>
+        /// Retrieves the voxel data of a neighboring chunk.
+        /// If the neighbor does not exist, it returns a temporary empty array and tracks it for later disposal.
+        /// </summary>
+        private NativeArray<Voxel> GetNeighborVoxels(in AllChunks allChunks, int3 neighborPos)
+        {
+            if (allChunks.Chunks.TryGetValue(neighborPos, out var neighbor))
+            {
+                return neighbor.Voxels;
+            }
+            else
+            {
+                // Create a temporary, empty array to avoid null references in the job.
+                var tempArray = new NativeArray<Voxel>(0, Allocator.TempJob);
+                tempArraysToDispose.Add(tempArray); // Track for disposal in the next frame.
+                return tempArray;
+            }
         }
     }
 }

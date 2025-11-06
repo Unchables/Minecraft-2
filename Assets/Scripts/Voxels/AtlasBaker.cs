@@ -10,6 +10,7 @@ namespace Voxels
         [Header("References")]
         [SerializeField] private BlockDatabaseSO blockDatabase;
         [SerializeField] private Material chunkMaterialTemplate; // A URP/Lit material to use as a base
+        [SerializeField] private Material waterMaterial;
 
         void Awake()
         {
@@ -60,6 +61,7 @@ namespace Voxels
             // === 4. Create the final Material ===
             var finalChunkMaterial = new Material(chunkMaterialTemplate);
             finalChunkMaterial.mainTexture = atlas;
+            finalChunkMaterial.SetFloat("_TileSize", 1f / atlasSizeInTiles);
 
             // === 5. Create BlockTextureData for DOTS ===
             // +1 to account for Air at ID 0
@@ -91,8 +93,9 @@ namespace Voxels
             });
 
             MaterialHolder.ChunkMaterial = finalChunkMaterial;
+            MaterialHolder.WaterMaterial = waterMaterial;
             
-            Debug.Log($"Generated {atlasPixelSize}x{atlasPixelSize} Texture Atlas with {uniqueTextures.Count} unique textures.");
+            Debug.Log($"Generated Atlas tile size = {atlasSizeInTiles} - {atlasPixelSize}x{atlasPixelSize} Texture Atlas with {uniqueTextures.Count} unique textures.");
         }
     
         private void AddUniqueTexture(Texture2D tex, List<Texture2D> uniqueTextures, Dictionary<Texture2D, int> map)

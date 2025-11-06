@@ -69,6 +69,7 @@ namespace Voxels
                 {
                     ecb.DestroyEntity(entity);
                     allChunks.Chunks.Remove(chunkPosition.ValueRO.Value);
+                    allChunks.Entites.Remove(chunkPosition.ValueRO.Value);
                 }
             }
 
@@ -102,6 +103,9 @@ namespace Voxels
                 ecb.AddComponent<ChunkAddedToAllChunks>(newChunkEntity);
                 ecb.SetComponentEnabled<ChunkAddedToAllChunks>(newChunkEntity, false);
 
+                ecb.AddComponent<ChunkDirty>(newChunkEntity);
+                ecb.SetComponentEnabled<ChunkDirty>(newChunkEntity, true);
+
                 bool generateMesh =
                     requiredPos.x * requiredPos.x + requiredPos.y * requiredPos.y + requiredPos.z * requiredPos.z <=
                     renderChunkRadius * renderChunkRadius;
@@ -112,15 +116,32 @@ namespace Voxels
                 ecb.AddComponent<MeshJobHandle>(newChunkEntity);
                 ecb.AddComponent<ChunkMeshRenderData>(newChunkEntity);
                 ecb.AddComponent(newChunkEntity, new VoxelStateMap { Map = new NativeHashMap<int, Entity>(0, Allocator.Persistent)});
+                
+                // 1. Create a child entity to hold the water mesh.
+                var waterEntity = ecb.CreateEntity();
+                ecb.SetName(waterEntity, $"Water: {requiredPos.ToString()}");
+                //ecb.AddComponent(waterEntity, new Parent { Value = newChunkEntity });
+
+                // 2. Add water-specific components to the main chunk entity.
+                ecb.AddComponent(newChunkEntity, new ChunkWaterMesh { Value = waterEntity });
+                ecb.AddComponent(newChunkEntity, new ChunkWaterMeshRenderData());
+                ecb.AddComponent(newChunkEntity, new IsChunkWaterMeshGenerating());
+                ecb.AddComponent(newChunkEntity, new ChunkHasWaterMesh());
+                ecb.SetComponentEnabled<IsChunkWaterMeshGenerating>(newChunkEntity, false);
+                ecb.SetComponentEnabled<ChunkHasWaterMesh>(newChunkEntity, false);
             }
 
             ecb.Playback(state.EntityManager);
             
-            foreach (var (position, voxels, isAdded) in SystemAPI.Query<RefRO<ChunkPosition>, RefRO<ChunkVoxels>, EnabledRefRW<ChunkAddedToAllChunks>>().WithDisabled<ChunkAddedToAllChunks>())
+            foreach (var (position, voxels,
+                         isAdded, entity) 
+                     in SystemAPI.Query<RefRO<ChunkPosition>, RefRO<ChunkVoxels>,
+                         EnabledRefRW<ChunkAddedToAllChunks>>().WithDisabled<ChunkAddedToAllChunks>().WithEntityAccess())
             {
                 if (!isAdded.ValueRO)
                 {
                     allChunks.Chunks.Add(position.ValueRO.Value, voxels.ValueRO);
+                    allChunks.Entites.Add(position.ValueRO.Value, entity);
                     isAdded.ValueRW = true;
                 }
             }

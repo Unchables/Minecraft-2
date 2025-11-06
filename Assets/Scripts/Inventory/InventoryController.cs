@@ -1,13 +1,24 @@
 ﻿using System.Collections.Generic;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Random = UnityEngine.Random;
 
 namespace Inventory
 {
     public class InventoryController : MonoBehaviour
     {
-        [HideInInspector] public ItemGrid selectedItemGrid;
+        private ItemGrid _selectedItemGrid;
+
+        public ItemGrid selectedItemGrid
+        {
+            get => _selectedItemGrid;
+            set
+            {
+                _selectedItemGrid = value;
+                inventoryHighlight.SetParent(value);
+            }
+        }
+
         public InventoryItem itemPrefab;
         public Transform canvasTransform;
         
@@ -18,6 +29,16 @@ namespace Inventory
         
         private RectTransform _selectedItemTransform;
         
+        [SerializeField] InventoryHighlight inventoryHighlight;
+
+        public static InventoryController Instance;
+        
+        private void Awake()
+        {
+            Instance = this;
+            inventoryHighlight = GetComponent<InventoryHighlight>();
+        }
+
         private void Update()
         {
             UpdateItemDrag();
@@ -26,10 +47,61 @@ namespace Inventory
             {
                 CreateRandomItem();
             }
-            
-            if (!selectedItemGrid) return;
+            if (Keyboard.current.rKey.wasPressedThisFrame)
+            {
+                RotateItem();
+            }
+
+            if (!_selectedItemGrid)
+            {
+                inventoryHighlight.Show(false);
+                return;
+            }
+
+            HandleHighlight();
 
             LeftMouseButtonPress();
+        }
+
+        private void RotateItem()
+        {
+            if (!_selectedItem) return;
+
+            _selectedItem.Rotate();
+            _oldPosition = Vector2Int.one * -999; // force itemHighight update
+        }
+
+        private Vector2Int _oldPosition;
+        private InventoryItem _itemTohighlight;
+        private void HandleHighlight()
+        {
+            var positionOnGrid = GetTileGridPosition();
+
+            if (_oldPosition == positionOnGrid) return;
+            
+            _oldPosition = positionOnGrid;
+            if (!_selectedItem)
+            {
+                _itemTohighlight = _selectedItemGrid.GetItem(positionOnGrid.x, positionOnGrid.y);
+                
+                if (_itemTohighlight != null)
+                {
+                    inventoryHighlight.Show(true);
+                    inventoryHighlight.SetSize(_itemTohighlight);
+                    inventoryHighlight.SetPosition(_selectedItemGrid, _itemTohighlight);
+                }
+                else
+                {
+                    inventoryHighlight.Show(false);
+                }
+            }
+            else
+            {
+                inventoryHighlight.Show(_selectedItemGrid.BoundaryCheck(positionOnGrid.x, positionOnGrid.y,
+                    _selectedItem.width, _selectedItem.height));
+                inventoryHighlight.SetSize(_selectedItem);
+                inventoryHighlight.SetPosition(_selectedItemGrid, _selectedItem, positionOnGrid.x, positionOnGrid.y);
+            }
         }
 
         private void CreateRandomItem()
@@ -54,8 +126,8 @@ namespace Inventory
         private void LeftMouseButtonPress()
         {
             if (!Mouse.current.leftButton.wasPressedThisFrame) return;
-                
-            Vector2Int tileGridPosition = selectedItemGrid.GetTileGridPosition(Mouse.current.position.ReadValue());
+
+            var tileGridPosition = GetTileGridPosition();
 
             if (!_selectedItem)
             {
@@ -67,25 +139,49 @@ namespace Inventory
             }
         }
 
+        private Vector2Int GetTileGridPosition()
+        {
+            Vector2 mousePosition = Mouse.current.position.ReadValue();
+
+            mousePosition.x -= ItemGrid.TileSizeWidth * 0.5f;
+            mousePosition.y += ItemGrid.TileSizeHeight * 0.5f;
+            if (_selectedItem)
+            {
+                mousePosition.x -= (_selectedItem.width - 1) * ItemGrid.TileSizeWidth / 2;
+                mousePosition.y += (_selectedItem.height - 1) * ItemGrid.TileSizeHeight / 2;
+            }
+            else
+            {
+            }
+                
+            Vector2Int tileGridPosition = _selectedItemGrid.WorldToGridPosition(mousePosition);
+            return tileGridPosition;
+        }
+
         private void PickupItem(Vector2Int tileGridPosition)
         {
-            _selectedItem = selectedItemGrid.PickUpItem(tileGridPosition.x, tileGridPosition.y);
+            _selectedItem = _selectedItemGrid.PickUpItem(tileGridPosition.x, tileGridPosition.y);
             if (_selectedItem)
             {
                 _selectedItemTransform = _selectedItem.GetComponent<RectTransform>();
+                _selectedItemTransform.SetAsFirstSibling();
+                _selectedItemTransform.SetParent(canvasTransform);
             }
         }
 
         private void PlaceItem(Vector2Int tileGridPosition)
         {
-            if (selectedItemGrid.PlaceItem(_selectedItem, _overlapItem, tileGridPosition.x, tileGridPosition.y))
+            _overlapItem = null;
+            
+            if (_selectedItemGrid.PlaceItem(_selectedItem, ref _overlapItem, tileGridPosition.x, tileGridPosition.y))
             {
                 _selectedItem = null;
-                if (_overlapItem)
+                if (_overlapItem != null)
                 {
                     _selectedItem = _overlapItem;
                     _overlapItem = null;
                     _selectedItemTransform = _selectedItem.GetComponent<RectTransform>();
+                    _selectedItemTransform.SetParent(canvasTransform);
                 }
             }
         }

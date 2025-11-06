@@ -17,6 +17,8 @@ namespace Voxels
         
         public NativeArray<Voxel> Voxels;
         
+        private const byte MAX_WATER_LEVEL = 7;
+        
         public void Execute()
         {
             BaseTerrainGen();
@@ -40,6 +42,7 @@ namespace Voxels
 
                 var voxel = new Voxel();
                 voxel.SetBlockID(block);
+                
                 Voxels[index] = voxel;
             }
         }
